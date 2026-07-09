@@ -1,0 +1,57 @@
+name: Update A Stock Dashboard
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-dashboard
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Schedule gate
+        id: schedule_gate
+        run: node scripts/schedule-gate.mjs
+
+      - name: Apply portfolio config
+        if: steps.schedule_gate.outputs.should_run == 'true'
+        run: node scripts/apply-portfolio-config.mjs
+
+      - name: Apply index trend patch
+        if: steps.schedule_gate.outputs.should_run == 'true'
+        run: node scripts/apply-index-trend-patch.mjs
+
+      - name: Update dashboard data
+        if: steps.schedule_gate.outputs.should_run == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_DAILY_MODEL: ${{ vars.OPENAI_DAILY_MODEL || 'gpt-5.4-mini' }}
+          OPENAI_DEEP_MODEL: ${{ vars.OPENAI_DEEP_MODEL || 'gpt-5.5' }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+        run: npm run update
+
+      - name: Commit updated data
+        if: steps.schedule_gate.outputs.should_run == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update dashboard data"
+          file_pattern: data/dashboard.json
