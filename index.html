@@ -1,0 +1,870 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A股跟踪仪表盘</title>
+  <style>
+    :root {
+      --bg: #f3f5f7;
+      --panel: #fff;
+      --ink: #17212b;
+      --muted: #65727f;
+      --line: #dbe2e8;
+      --blue: #1e5b8f;
+      --red: #c83b3b;
+      --green: #16885a;
+      --amber: #986c14;
+      --soft: #eef3f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header { background: #172431; color: #fff; border-bottom: 4px solid #416f89; }
+    .wrap, main, .tabs { max-width: 1480px; margin: 0 auto; }
+    .wrap { padding: 18px 22px; }
+    .topbar { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    .sub { color: #c0ccd5; font-size: 13px; line-height: 1.6; }
+    .datebox {
+      border: 1px solid #526f82;
+      background: #22313d;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+    nav { background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+    .tabs { display: flex; gap: 2px; padding: 0 22px; overflow: auto; }
+    .tab {
+      border: 0;
+      background: transparent;
+      padding: 13px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+    main { padding: 20px 22px; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .cols { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+    .card h2 { font-size: 15px; margin: 0 0 10px; }
+    .card h3 { font-size: 14px; margin: 14px 0 8px; }
+    .num { font-size: 24px; font-weight: 700; }
+    .muted { color: var(--muted); }
+    .tag {
+      display: inline-block;
+      padding: 4px 7px;
+      border: 1px solid var(--line);
+      background: #f6f8fa;
+      border-radius: 4px;
+      font-size: 12px;
+      margin: 2px;
+    }
+    .red { color: var(--red); }
+    .green { color: var(--green); }
+    .amber { color: var(--amber); }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); }
+    .table-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--line); background: #fff; }
+    .table-scroll table { border: 0; min-width: 980px; }
+    .compact-table th, .compact-table td { padding: 8px 8px; font-size: 12px; }
+    .nowrap { white-space: nowrap; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 9px;
+      text-align: left;
+      font-size: 13px;
+      vertical-align: top;
+      line-height: 1.55;
+    }
+    th { background: #edf2f6; color: #3f4b56; }
+    .section { margin-top: 14px; }
+    .notice { border-left: 4px solid var(--amber); background: #fff8e8; }
+    .risk { border-left: 4px solid var(--red); background: #fff4f4; }
+    .good { border-left: 4px solid var(--green); background: #f2fbf6; }
+    textarea {
+      width: 100%;
+      min-height: 330px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: Consolas, "Microsoft YaHei", sans-serif;
+      font-size: 13px;
+    }
+    button.action {
+      border: 1px solid #9fb3c2;
+      background: #fff;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    .dense p { margin: 7px 0; line-height: 1.7; }
+    .loader { padding: 30px; color: var(--muted); }
+    @media (max-width: 900px) {
+      .grid, .grid3, .cols { grid-template-columns: 1fr; }
+      .topbar { display: block; }
+      .datebox { margin-top: 12px; white-space: normal; }
+      th, td { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>A股跟踪仪表盘</h1>
+        <div class="sub" id="subtitle">云端版 · 每日 09:00 / 12:30 / 17:00 北京时间自动更新</div>
+      </div>
+      <div class="datebox" id="updateBox">正在读取数据...</div>
+    </div>
+  </header>
+  <nav>
+    <div class="tabs" id="tabs"></div>
+  </nav>
+  <main id="main"><div class="loader">正在加载仪表盘数据...</div></main>
+
+  <script>
+    const TABS = [
+      ["overview", "首席观点"],
+      ["actions", "操作建议"],
+      ["funds", "资金情绪"],
+      ["radar", "投研雷达"],
+      ["earnings", "财报雷达"],
+      ["global", "全球政策"],
+      ["candidates", "强弹性候选"],
+      ["value", "估值质量"],
+      ["fiveX", "5倍股模型"],
+      ["tradeTracking", "我的跟踪池"],
+      ["discipline", "策略纪律"]
+    ];
+
+    const fallbackData = {
+      meta: {
+        version: "本地兜底版",
+        lastUpdated: "2026-07-02 盘后",
+        dataSource: "内置兜底数据",
+        note: "若云端数据未加载，会显示这份兜底数据。"
+      },
+      market: {
+        indices: [
+          { name: "上证指数", close: 4028.90, pct: -2.03 },
+          { name: "创业板指", close: 4017.27, pct: -5.71 },
+          { name: "科创50", close: 1987.29, pct: -7.70 }
+        ],
+        conclusion: "科技成长线集中杀估值，先防守再找修复。",
+        breadth: "涨跌停/涨跌家数待自动数据源补齐。"
+      },
+      macro: {
+        riskLevel: "偏防守",
+        summary: "海外科技、韩国半导体、日经设备链和汇率会先影响A股成长风险偏好；外盘不配合时，半导体材料、AI硬件和高位题材都要降低仓位预期。",
+        signals: [
+          { source: "美股/费半", watch: "NASDAQ、费城半导体、英伟达、AMD、博通、美光", aShareMap: "AI服务器、光模块、PCB、先进封装、半导体材料", action: "海外科技强则A股科技可看修复；海外科技弱则高位成长降级。" },
+          { source: "韩国", watch: "三星电子、SK海力士、HBM、存储周期", aShareMap: "雅克、江丰、材料链、先进封装、存储周期", action: "韩国存储止跌或走强，A股材料链更容易修复。" },
+          { source: "日经", watch: "半导体设备、电子材料、机器人、汽车链", aShareMap: "华海清科、安集、南大光电、富特科技、功率半导体", action: "日经科技链止跌，A股设备/材料修复概率提高。" }
+        ],
+        portfolioImpact: [
+          { target: "富特科技", link: "新能源车出口、800V快充、欧洲关税和国内新能源车销量。", use: "政策改善可支撑趋势，但高仓位仍要防补跌。" },
+          { target: "江丰/雅克/鼎龙/菲利华", link: "费半、韩国存储、日经半导体设备、国产替代。", use: "外围止跌是材料链反包前提；外围弱时反弹不追。" }
+        ]
+      },
+      portfolio: {
+        totalValue: "",
+        positionRatio: "84.44%",
+        profit: "",
+        privacyNote: "按用户要求，网页不展示账户金额，只展示仓位比例、收益百分比和交易状态。",
+        stance: "防守",
+        holdings: [
+          { name: "富特科技", code: "301607", weight: "42.95%", accountReturnPct: 0.82, close: 52.22, pct: 1.22, high: 53.20, low: 49.50, action: "核心仓观察但不加仓。", risk: "核心仓观察", theme: "新能源车高压电源/800V快充" },
+          { name: "江丰电子", code: "300666", weight: "15.68%", accountReturnPct: -14.02, close: 342.47, pct: -13.15, high: 375.00, low: 340.51, action: "已降仓，等待材料链修复确认。", risk: "风险升高", theme: "高纯靶材/半导体材料" },
+          { name: "浪潮信息", code: "000977", weight: "15.66%", accountReturnPct: -0.46, close: 66.35, pct: 4.01, high: 67.00, low: 63.00, action: "新仓验证，等AI服务器链放量确认。", risk: "新仓验证", theme: "AI服务器/国产算力" },
+          { name: "中材科技", code: "002080", weight: "8.03%", accountReturnPct: 27.29, close: 82.22, pct: -7.31, high: 86.80, low: 81.59, action: "仓位下降后做利润保护。", risk: "利润保护", theme: "玻纤/电子布/新能源材料" },
+          { name: "鼎龙股份", code: "300054", weight: "2.12%", accountReturnPct: -28.28, close: 93.37, pct: -6.91, high: 98.37, low: 90.85, action: "小仓保留观察，不加仓。", risk: "弱势小仓", theme: "CMP/光刻胶材料" }
+        ]
+      },
+      watchlist: [
+        ["通富微电", "先进封装/HBM", "科技线修复时可能先反弹", "科创50止跌且封测放量", "先观察，最多小仓"],
+        ["长电科技", "封测/先进封装", "先进封装稳健锚", "封测板块回流", "3%以内"],
+        ["安集科技", "CMP材料", "验证鼎龙和材料链", "材料资金回流", "不追高"],
+        ["南大光电", "光刻胶/电子特气", "政策弹性高", "光刻胶催化+放量", "事件仓"],
+        ["金宏气体", "电子特气", "雅克映射", "气体链强于材料链", "小仓"],
+        ["新洁能", "功率半导体", "验证露笑", "功率半导体止跌", "暂不急"]
+      ]
+    };
+
+    let state = fallbackData;
+
+    function fmtPct(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return v || "-";
+      return (n > 0 ? "+" : "") + n.toFixed(2) + "%";
+    }
+
+    function pctClass(v) {
+      const n = Number(v);
+      return n > 0 ? "red" : n < 0 ? "green" : "";
+    }
+
+    function card(title, body) {
+      return `<div class="card"><h2>${title}</h2>${body}</div>`;
+    }
+
+    function globalMeaning(name, pct) {
+      const n = Number(pct);
+      if (name.includes("半导体")) {
+        return n < -3 ? "芯片链明显承压，A股半导体材料和先进封装先防守。" : "芯片链可观察修复，A股材料/封测看成交确认。";
+      }
+      if (name.includes("韩国")) {
+        return n < -3 ? "韩国存储/HBM风险释放，压制雅克、江丰、先进封装情绪。" : "韩国止跌有利于材料链修复。";
+      }
+      if (name.includes("日经")) {
+        return n < -2 ? "日本半导体设备/电子材料走弱，A股设备材料不急抄底。" : "日经设备链配合时，A股设备材料更容易修复。";
+      }
+      if (name.includes("纳斯达克")) {
+        return n < -1 ? "美股科技风险偏好下降，A股成长股降预期。" : "美股科技稳定，有利于A股AI硬件和科技修复。";
+      }
+      if (name.includes("恒生")) {
+        return n > 0 ? "港股风险偏好尚可，可观察A股情绪是否跟随。" : "港股偏弱时，A股风险偏好也会受压。";
+      }
+      return "作为全球风险偏好参考。";
+    }
+
+    function holdingsRows() {
+      return (state.portfolio.holdings || []).map(h => `
+        <tr>
+          <td><b>${h.name}</b><br><span class="muted">${h.code}</span></td>
+          <td>${h.weight || "-"}<br>${h.theme || ""}</td>
+          <td><span class="${pctClass(h.accountReturnPct)}">${fmtPct(h.accountReturnPct)}</span><br><span class="muted">持仓收益</span></td>
+          <td>${h.close ?? "-"}<br><span class="${pctClass(h.pct)}">${fmtPct(h.pct)}</span></td>
+          <td>${h.high ?? "-"} / ${h.low ?? "-"}</td>
+          <td><b>${h.risk || "-"}</b><br>${h.action || "-"}</td>
+        </tr>
+      `).join("");
+    }
+
+    function render(id) {
+      const market = state.market || {};
+      const macro = state.macro || {};
+      const p = state.portfolio || {};
+      const indices = market.indices || [];
+      const guidanceTarget = state.meta?.guidanceTarget || "下一阶段";
+      const sessionName = state.meta?.session || "当前版本";
+      const modelAnalysis = macro.modelAnalysis || {};
+      let html = "";
+
+      if (id === "overview") {
+        const earningsAnalystSummary = macro.earningsAnalystSummary || {};
+        const earningsActionIdeas = macro.earningsActionIdeas || [];
+        const researchRadarTasks = macro.researchRadarTasks || [];
+        const wholeMarketRadar = macro.wholeMarketRadar || [];
+        const nonTechWatch = macro.nonTechWatch || [];
+        const capitalMigrationView = macro.capitalMigrationView || {};
+        const marketRegime = macro.marketRegime || {};
+        const styleAnchors = macro.styleAnchors || [];
+        const elasticAttackWatch = macro.elasticAttackWatch || [];
+        const oversoldValueIdeas = state.oversoldValueIdeas || [];
+        const holdingHardEvents = macro.holdingHardEvents || [];
+        html = `
+          <div class="section card risk dense">
+            <h2>牛熊/结构性行情预警</h2>
+            <p><b>当前阶段：</b>${marketRegime.regime || "等待判断"}；<b>阶段分：</b>${marketRegime.score ?? "-"}</p>
+            <p><b>我的判断：</b>${marketRegime.summary || "先判断是全面行情、结构性牛市、震荡轮动还是熊市预警，再决定仓位和候选方向。"}</p>
+            <p><b>仓位指引：</b>${marketRegime.positionGuide || "没有市场阶段确认前，不重仓押单一方向。"}</p>
+            <table><thead><tr><th>先行信号</th><th>触发条件</th><th>动作</th></tr></thead><tbody>
+              ${(marketRegime.earlySignals || []).map(x => `<tr><td><b>${x.signal}</b></td><td>${x.condition}</td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>阶段评分拆解</h2>
+            <table><thead><tr><th>指标</th><th>数值</th><th>解读</th></tr></thead><tbody>
+              ${(marketRegime.scoreItems || []).map(x => `<tr><td><b>${x.item}</b></td><td>${Number.isFinite(Number(x.value)) ? Number(x.value).toFixed(2) : x.value}</td><td>${x.read}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card notice dense">
+            <h2>首席分析师结论</h2>
+            <p><b>持仓/跟踪硬事件：</b>${holdingHardEvents.length ? holdingHardEvents.slice(0, 4).map(x => `${x.priority || ""}${x.name}：${x.title}`).join("；") : "暂无新增硬事件。"}</p>
+            <p><b>资金迁移判断：</b>${capitalMigrationView.conclusion || "先确认资金还在不在科技。你的组合科技/材料/新能源暴露很高，如果科技不是主线，不能硬扛。"}</p>
+            <p><b>正在从哪里撤：</b>${capitalMigrationView.from || "暂无确认迁移数据，先按持仓风控处理。"}</p>
+            <p><b>可能流向哪里：</b>${capitalMigrationView.to || "暂无确认迁移数据，先看红利、周期、金融、消费是否强于科技。"}</p>
+            <p><b>组合风险：</b>${capitalMigrationView.portfolioRisk || "当前组合偏科技，若科技不强，先降低集中度。"}</p>
+            <p><b>我现在的科技观点：</b>只有AI服务器、PCB、光模块、存储/HBM这条“能被财报验证的AI基础设施链”还能重点看，不是泛科技都能买。浪潮信息是验证仓，必须看AI服务器链同步放量。</p>
+            <p><b>当前持仓动作：</b>如果科技资金不回流，富特先控单票集中度，江丰继续降到10%以内，鼎龙弱则清尾仓，中材做利润保护；同时把红利/周期/金融/消费纳入备选。</p>
+            <p><b>财报判断：</b>${earningsAnalystSummary.portfolioAdvice || "暂无新增财报硬数据，不编造；先按持仓风控和板块资金处理。"}</p>
+            <p><b>今天最重要的投研任务：</b>${researchRadarTasks[0]?.task || "先查持仓公告和财报预告"}，对象：${researchRadarTasks[0]?.targets || "当前持仓"}。</p>
+          </div>
+          <div class="section card dense">
+            <h2>风格锚，不等于推荐买入</h2>
+            <table><thead><tr><th>排序</th><th>股票</th><th>方向</th><th>用途</th><th>触发条件</th><th>风险</th></tr></thead><tbody>
+              ${styleAnchors.map(x => `<tr><td><b>${x.rank}</b></td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td>${x.direction}</td><td>${x.why}</td><td>${x.trigger}</td><td>${x.risk}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>未来2周到1个月弹性进攻候选</h2>
+            <table><thead><tr><th>排序</th><th>股票</th><th>方向</th><th>角色</th><th>为什么</th><th>触发条件</th><th>风险</th></tr></thead><tbody>
+              ${elasticAttackWatch.map(x => `<tr><td><b>${x.rank}</b></td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td>${x.direction}</td><td>${x.marketRole}</td><td>${x.why}</td><td>${x.trigger}</td><td>${x.risk}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>全市场估值质量观察</h2>
+            <table><thead><tr><th>排序</th><th>股票</th><th>评分</th><th>硬指标</th><th>为什么看</th><th>动作</th></tr></thead><tbody>
+              ${oversoldValueIdeas.slice(0, 5).map((x, i) => `<tr><td>${i + 1}</td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td><b>${x.score}/10</b><br>${x.phase}</td><td>PE:${x.peTtm ?? x.pe ?? "待取数"} PB:${x.pb ?? "待取数"}<br><span class="muted">市值:${x.marketCapYi ?? "待取数"}亿 换手:${x.turnover ?? "待取数"}%</span></td><td>${x.logic}<br><span class="muted">${x.keyCheck}</span></td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>我给你的方向建议</h2>
+            <table><thead><tr><th>判断</th><th>方向</th><th>原因</th><th>操作</th></tr></thead><tbody>
+              ${earningsActionIdeas.map(x => `<tr><td><b>${x.direction}</b></td><td>${x.targets}</td><td>${x.reason}</td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>全市场风格雷达</h2>
+            <table><thead><tr><th>风格</th><th>当前判断</th><th>看什么信号</th><th>代表方向</th><th>对你持仓的影响</th></tr></thead><tbody>
+              ${wholeMarketRadar.map(x => `<tr><td><b>${x.style}</b></td><td>${x.currentView}</td><td>${x.watchSignals}</td><td>${x.representativeSectors}<br><span class="muted">${x.stockExamples}</span></td><td>${x.portfolioAction}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense">
+            <h2>非科技备选方向</h2>
+            <table><thead><tr><th>优先级</th><th>方向</th><th>为什么看</th><th>观察信号</th><th>动作</th></tr></thead><tbody>
+              ${nonTechWatch.map(x => `<tr><td><b>${x.rank}</b></td><td>${x.direction}</td><td>${x.why}</td><td>${x.watch}</td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="grid">
+            ${card("上证指数", `<div class="num ${pctClass(indices[0]?.pct)}">${indices[0]?.close ?? "-"}</div><div class="muted">${fmtPct(indices[0]?.pct)}</div>`)}
+            ${card("创业板指", `<div class="num ${pctClass(indices[1]?.pct)}">${indices[1]?.close ?? "-"}</div><div class="muted">${fmtPct(indices[1]?.pct)}</div>`)}
+            ${card("科创50", `<div class="num ${pctClass(indices[2]?.pct)}">${indices[2]?.close ?? "-"}</div><div class="muted">${fmtPct(indices[2]?.pct)}</div>`)}
+            ${card("组合状态", `<div class="num amber">${p.stance || "待判断"}</div><div class="muted">仓位 ${p.positionRatio || "-"}</div>`)}
+          </div>
+          <div class="section card risk dense">
+            <h2>${sessionName}</h2>
+            <p>${market.conclusion || "暂无行情结论，先按首席观点和持仓风控执行。"}</p>
+            <p><b>指导对象：</b>${guidanceTarget}。${state.meta?.guidanceInstruction || ""}</p>
+            <p><b>组合核心：</b>富特科技是防线，浪潮信息是新切入的AI服务器验证仓，半导体材料链已经明显降风险。${p.privacyNote || ""}</p>
+          </div>
+          <div class="section card notice dense">
+            <h2>宏观/海外先验判断</h2>
+            <p><b>当前环境：</b>${macro.riskLevel || "待判断"}。${macro.summary || "暂无完整宏观数据，先按全市场风格雷达处理。"}</p>
+            <p><b>最终指令：</b>${macro.finalCommand || "先控科技集中度，再等资金方向确认。"}</p>
+            <p><b>我的投研观点：</b>${macro.finalAnalystView || "先看资金是否还在科技，不在就降集中度并切换观察方向。"}</p>
+            <p><b>使用方式：</b>所有持仓、强弹性候选和我的跟踪池都先看宏观/海外风向，再看A股板块资金，最后看个股技术形态。外盘不配合时，技术形态再漂亮也要降低仓位和预期。</p>
+          </div>
+          <div class="section card dense">
+            <h2>模型分析</h2>
+            <p><b>状态：</b>${modelAnalysis.status || "规则版"}；<b>模型：</b>${modelAnalysis.model || "-"}</p>
+            <p><b>结论：</b>${modelAnalysis.summary || macro.modelSummary || "当前显示规则化投研结论。"}</p>
+            <p><b>指令：</b>${modelAnalysis.finalCommand || macro.finalCommand || "先控科技集中度，再等资金方向确认。"}</p>
+          </div>
+          <div class="section card"><h2>我看好什么，为什么</h2>
+            <table><thead><tr><th>排序</th><th>观点</th><th>为什么</th><th>A股映射</th><th>触发条件</th><th>失败信号</th></tr></thead><tbody>
+              ${(macro.convictionViews || []).map(x => `<tr><td>${x.rank}</td><td><b>${x.view}</b></td><td>${x.why}</td><td>${x.aShareMap}</td><td>${x.trigger}</td><td>${x.fail}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>持仓行情事实表</h2>${holdingsTable()}</div>
+        `;
+      }
+
+      if (id === "actions") {
+        html = `
+          <div class="card dense">
+            <h2>${guidanceTarget}操作建议</h2>
+            <p><b>本版口径：</b>${sessionName}，用于指导${guidanceTarget}。${state.meta?.guidanceInstruction || ""}</p>
+            <p><b>第一优先级：</b>富特科技仍是核心仓，今天明显强于组合，但单票接近四成，只持有不加仓；若放量跌破短线支撑，先降到35%左右。</p>
+            <p><b>第二优先级：</b>浪潮信息今天上涨验证了AI服务器/国产算力调仓方向，明天看AI服务器、PCB、工业富联链是否延续，延续才继续拿。</p>
+            <p><b>第三优先级：</b>江丰电子仍是半导体材料风险仓，若材料链不能放量反包，继续降到10%以内。</p>
+            <p><b>第四优先级：</b>巨化股份是新增周期/制冷剂方向，用来降低科技单一风格暴露；明天必须看制冷剂、氟化工和资源周期是否有资金承接。</p>
+            <p><b>第五优先级：</b>欣锐科技是高压快充验证仓，和富特同方向，不能越跌越补；富特强而欣锐弱时，只观察不加仓。</p>
+            <p><b>宏观过滤：</b>${macro.summary || "先看海外科技、韩国半导体、日经和汇率，再决定成长股仓位。"}</p>
+            <p><b>投研观点：</b>${macro.finalAnalystView || "先看资金是否还在科技，不在就降集中度并切换观察方向。"}</p>
+          </div>
+          <div class="section grid3">
+            ${card("建议优先减/降级", `<p>江丰电子：如果${guidanceTarget}半导体材料没有强修复，应优先降低科技材料高波动暴露。</p>`)}
+            ${card("暂不卖但严控", `<p>富特科技：强势但仓位仍高；欣锐科技同属高压快充，不要让同方向仓位过度集中。</p>`)}
+            ${card(`${guidanceTarget}重点关注`, "<p>先看AI服务器/PCB是否延续，再看制冷剂/氟化工能否承接，最后看半导体材料是否反包。</p>")}
+          </div>
+        `;
+      }
+
+      if (id === "funds") {
+        const internals = market.internals || macro.marketInternals || {};
+        html = `
+          <div class="grid3">
+            ${card("指数资金情绪", `<p>${market.conclusion || "等待指数更新。"}</p>`)}
+            ${card("全A市场宽度", `<p>${internals.read || market.breadth || "等待全A宽度数据。"}</p><p>情绪：${internals.emotion || "待判断"}；样本：${internals.sampleSize || "-"}只。</p>`)}
+            ${card("宏观过滤", `<p>${macro.riskLevel || "待判断"}：${macro.summary || "等待海外与政策映射。"}</p>`)}
+          </div>
+          <div class="section card dense">
+            <h2>资金到底去了哪里</h2>
+            <table><thead><tr><th>行业</th><th>平均涨跌</th><th>上涨占比</th><th>成交额</th><th>解读</th></tr></thead><tbody>
+              ${(internals.activeIndustries || []).map(x => `<tr><td><b>${x.industry}</b></td><td class="${pctClass(x.avgPct)}">${fmtPct(x.avgPct)}</td><td>${x.upRatio}%</td><td>${x.amountYi}亿<br><span class="muted">${x.amountShare ?? "-"}%</span></td><td>${x.upRatio >= 55 && x.avgPct > 0 ? "资金有承接" : x.upRatio <= 40 && x.avgPct < 0 ? "成交活跃但偏承压" : "分歧换手"}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid2">
+            ${card("强势行业", `<ul>${(internals.strongIndustries || []).map(x => `<li><b>${x.industry}</b>：${fmtPct(x.avgPct)}，上涨占比${x.upRatio}%</li>`).join("") || "<li>暂无</li>"}</ul>`)}
+            ${card("弱势行业", `<ul>${(internals.weakIndustries || []).map(x => `<li><b>${x.industry}</b>：${fmtPct(x.avgPct)}，上涨占比${x.upRatio}%</li>`).join("") || "<li>暂无</li>"}</ul>`)}
+          </div>
+          <div class="section card"><h2>风格判断</h2>
+            <table><thead><tr><th>信号</th><th>判断</th><th>组合含义</th></tr></thead><tbody>
+              <tr><td>全A宽度</td><td>${internals.emotion || "待判断"}</td><td>${internals.emotion === "弱势防守" ? "先控仓，不扩大试错。" : "只做强方向，不做弱反弹。"}</td></tr>
+              <tr><td>成交集中行业</td><td>${(internals.activeIndustries || []).slice(0, 3).map(x => x.industry).join("、") || "待确认"}</td><td>看强行业是否和你的持仓同方向；不同方向时要降持仓预期。</td></tr>
+              <tr><td>持仓映射</td><td>富特/欣锐看新能源车高压快充，浪潮看AI服务器，巨化看氟化工周期，江丰看半导体材料。</td><td>资金不在对应行业时，不因为个股故事补仓。</td></tr>
+            </tbody></table>
+          </div>
+        `;
+      }
+
+      if (id === "radar") {
+        const newsSources = macro.newsSources || [];
+        const researchRadarTasks = macro.researchRadarTasks || [];
+        html = `
+          <div class="grid3">
+            ${card("财联社/快讯口径", "<p>新闻必须映射到股价：科技线大跌时，利好公告也可能被资金兑现。</p>")}
+            ${card("雪球/市场分歧", "<p>雪球主要看讨论热度、分歧和预期拥挤度，不把帖子当事实源；如果利好已被充分讨论，反而要防兑现。</p>")}
+            ${card("同花顺/题材归因", "<p>同花顺主要看概念板块、涨停原因、异动归因和同题材联动，用来判断上涨是不是有板块资金支持。</p>")}
+          </div>
+          <div class="section card notice"><h2>今天投研雷达先看什么</h2>
+            <table><thead><tr><th>优先级</th><th>任务</th><th>对象</th><th>要找的事实</th><th>怎么影响操作</th></tr></thead><tbody>
+              ${researchRadarTasks.map(x => `<tr><td><b>${x.priority}</b></td><td>${x.task}</td><td>${x.targets}</td><td>${x.whatToFind}</td><td>${x.decisionUse}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>新闻源矩阵</h2>
+            <table><thead><tr><th>来源</th><th>角色</th><th>重点看什么</th><th>使用方式</th><th>映射范围</th></tr></thead><tbody>
+              ${newsSources.map(x => `<tr><td><b>${x.name}</b></td><td>${x.role}</td><td>${x.watch}</td><td>${x.use}</td><td>${x.portfolioMap}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>模型投研任务</h2>
+            <p class="muted">模型状态：${modelAnalysis.status || "规则版"}；模型：${modelAnalysis.model || "-"}</p>
+            <table><thead><tr><th>模块</th><th>结论/任务</th></tr></thead><tbody>
+              <tr><td><b>总判断</b></td><td>${modelAnalysis.summary || "当前显示规则化投研结论。"}</td></tr>
+              <tr><td><b>操作优先级</b></td><td>${(modelAnalysis.actionPriorities || []).map(x => `<p>${x}</p>`).join("") || "-"}</td></tr>
+              <tr><td><b>新闻抓取任务</b></td><td>${(modelAnalysis.newsTasks || []).map(x => `<p><b>${x.source || ""}</b>：${x.task || ""}<br><span class="muted">${x.map || ""}</span></p>`).join("") || "-"}</td></tr>
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>宏观/海外映射到持仓</h2>
+            <table><thead><tr><th>对象</th><th>关联变量</th><th>复盘使用方式</th></tr></thead><tbody>
+              ${(macro.portfolioImpact || []).map(x => `<tr><td><b>${x.target}</b></td><td>${x.link}</td><td>${x.use}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>新闻影响路径</h2>
+            <table><thead><tr><th>新闻/政策类型</th><th>影响对象</th><th>盘面含义</th><th>验证信号</th></tr></thead><tbody>
+              <tr><td>海外芯片调整</td><td>江丰、雅克、鼎龙、菲利华</td><td>压制A股材料估值</td><td>看韩国/日经半导体是否止跌</td></tr>
+              <tr><td>新能源车销量/800V</td><td>富特、露笑</td><td>富特更受资金认可</td><td>富特能否守住关键价位</td></tr>
+              <tr><td>国产算力/AI服务器</td><td>通富、长电、沪电、胜宏</td><td>科技线修复时观察</td><td>先进封装和PCB成交放大</td></tr>
+            </tbody></table>
+          </div>
+        `;
+      }
+
+      if (id === "earnings") {
+        const earningsAnalystSummary = macro.earningsAnalystSummary || {};
+        const earningsActionIdeas = macro.earningsActionIdeas || [];
+        const earningsRadarPolicy = macro.earningsRadarPolicy || [];
+        const aShareEarningsWatch = macro.aShareEarningsWatch || [];
+        const aShareEarningsTargets = macro.aShareEarningsTargets || [];
+        const globalEarningsMap = macro.globalEarningsMap || [];
+        const holdingHardEvents = macro.holdingHardEvents || [];
+        html = `
+          <div class="card notice dense">
+            <h2>我的财报判断</h2>
+            <p><b>结论：</b>${earningsAnalystSummary.conclusion || "暂无新增财报硬数据，不编造；先看财报能否验证产业趋势。"}</p>
+            <p><b>持仓建议：</b>${earningsAnalystSummary.portfolioAdvice || "暂无新增财报硬数据，先按持仓风控处理。"}</p>
+            <p><b>候选建议：</b>${earningsAnalystSummary.candidateAdvice || "候选股必须同时满足财报边际、周K趋势和量能台阶。"}</p>
+            <p><b>当前状态：</b>${earningsAnalystSummary.currentStatus || "等待确认具体公告。"}</p>
+          </div>
+          <div class="section card risk dense"><h2>持仓/跟踪公告硬事件</h2>
+            <table><thead><tr><th>优先级</th><th>股票</th><th>公告</th><th>硬事实/解读</th><th>动作</th></tr></thead><tbody>
+              ${holdingHardEvents.map(x => `<tr><td><b>${x.priority || "-"}</b><br><span class="muted">${x.date || ""}</span></td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td><a href="${x.url}" target="_blank" rel="noreferrer">${x.title}</a><br><span class="muted">${x.type || ""}；${x.importance || ""}</span></td><td>${(x.facts || []).map(f => `<p>${f}</p>`).join("") || x.analystRead || "-"}</td><td>${x.action || "-"}<br><span class="muted">${x.trigger || ""}</span></td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>财报驱动的方向建议</h2>
+            <table><thead><tr><th>判断</th><th>方向</th><th>原因</th><th>股票映射</th><th>操作</th></tr></thead><tbody>
+              ${earningsActionIdeas.map(x => `<tr><td><b>${x.direction}</b></td><td>${x.targets}</td><td>${x.reason}</td><td>${x.stockMap}</td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>A股财报高亮规则</h2>
+            <table><thead><tr><th>层级</th><th>触发标准</th><th>处理方式</th><th>排除项</th></tr></thead><tbody>
+              ${earningsRadarPolicy.map(x => `<tr><td><b>${x.tier}</b></td><td>${x.threshold}</td><td>${x.action}</td><td>${x.caveat}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>A股财报分析框架</h2>
+            <table><thead><tr><th>对象</th><th>重点指标</th><th>高亮标准</th><th>下一期预想</th></tr></thead><tbody>
+              ${aShareEarningsWatch.map(x => `<tr><td><b>${x.focus}</b></td><td>${x.watch}</td><td>${x.highlight}</td><td>${x.nextQuarter}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>当前持仓财报怎么判断</h2>
+            <table><thead><tr><th>公司</th><th>关系</th><th>为什么盯</th><th>关键指标</th><th>利好解读</th><th>风险解读</th><th>下一期预想</th></tr></thead><tbody>
+              ${aShareEarningsTargets.map(x => `<tr><td><b>${x.name}</b></td><td>${x.relation}</td><td>${x.whyWatch}</td><td>${x.keyMetrics}</td><td>${x.bullishRead}</td><td>${x.riskRead}</td><td>${x.nextQuarterView}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>海外指标公司财报映射</h2>
+            <table><thead><tr><th>公司</th><th>重点指标</th><th>A股映射</th><th>解读方式</th></tr></thead><tbody>
+              ${globalEarningsMap.map(x => `<tr><td><b>${x.company}</b></td><td>${x.indicators}</td><td>${x.aShareImpact}</td><td>${x.read}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+        `;
+      }
+
+      if (id === "global") {
+        const globalMarkets = macro.globalMarkets || [];
+        const overseasRead = macro.overseasRead || [];
+        const dailyGlobalReview = macro.dailyGlobalReview || [];
+        const policyReview = macro.policyReview || [];
+        const usGainerMapping = macro.usGainerMapping || [];
+        const asiaGainerMapping = macro.asiaGainerMapping || [];
+        html = `
+          <div class="card risk dense">
+            <h2>全球市场今天到底发生了什么</h2>
+            <p><b>当前环境：</b>${macro.riskLevel || "待判断"}。${macro.summary || "等待海外市场数据。"}</p>
+            <p><b>对你账户的含义：</b>今天A股科技线大跌，不是孤立事件。美股芯片、韩国半导体、日经科技链同时走弱，会直接压制你持仓里的江丰、雅克、鼎龙、菲利华，也会影响强弹性候选里的先进封装、PCB、光模块。</p>
+          </div>
+          <div class="section grid3">
+            ${dailyGlobalReview.map(x => card(x.title, `<p><b>事实：</b>${x.fact}</p><p><b>解读：</b>${x.read}</p><p><b>A股映射：</b>${x.aShare}</p>`)).join("")}
+          </div>
+          <div class="section card"><h2>政策和产业消息怎么影响A股</h2>
+            <table><thead><tr><th>政策/产业线索</th><th>具体影响</th></tr></thead><tbody>
+              ${policyReview.map(x => `<tr><td><b>${x.title}</b></td><td>${x.content}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>海外市场事实表</h2>
+            <table><thead><tr><th>市场/指数</th><th>最新点位</th><th>涨跌幅</th><th>数据时间</th><th>A股含义</th></tr></thead><tbody>
+              ${globalMarkets.map(g => `<tr>
+                <td><b>${g.name}</b></td>
+                <td>${Number.isFinite(Number(g.close)) ? Number(g.close).toFixed(2) : "-"}</td>
+                <td class="${pctClass(g.pct)}">${fmtPct(g.pct)}</td>
+                <td>${g.time || "-"}</td>
+                <td>${globalMeaning(g.name, g.pct)}</td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>海外复盘与A股传导</h2>
+            <table><thead><tr><th>市场</th><th>事实</th><th>A股映射</th><th>结论</th></tr></thead><tbody>
+              ${overseasRead.map(x => `<tr><td><b>${x.market}</b></td><td>${x.fact}</td><td>${x.aShareImpact}</td><td>${x.conclusion}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>今天A股映射方向排序</h2>
+            <table><thead><tr><th>排名</th><th>A股映射方向</th><th>海外依据</th><th>A股候选/持仓映射</th><th>交易判断</th></tr></thead><tbody>
+              ${(macro.aSharePlaybook || []).map(x => `<tr><td>${x.rank}</td><td><b>${x.direction}</b></td><td>${x.overseasBasis}</td><td>${x.aShareMap}</td><td>${x.tradingRead}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>美股涨幅榜到A股映射</h2>
+            <table><thead><tr><th>主题</th><th>美股观察样本</th><th>触发条件</th><th>A股映射</th><th>分析用法</th></tr></thead><tbody>
+              ${usGainerMapping.map(x => `<tr><td><b>${x.theme}</b></td><td>${x.usExamples}</td><td>${x.trigger}</td><td>${x.aShareMap}</td><td>${x.read}<br><span class="muted">${x.use}</span></td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>日韩涨幅榜到A股映射</h2>
+            <table><thead><tr><th>市场</th><th>板块</th><th>代表股票</th><th>涨幅逻辑</th><th>A股映射</th><th>使用方式</th></tr></thead><tbody>
+              ${asiaGainerMapping.map(x => `<tr><td><b>${x.market}</b></td><td>${x.theme}</td><td>${x.examples}</td><td>${x.logic}<br><span class="muted">触发：${x.trigger}</span></td><td>${x.aShareMap}</td><td>${x.use}<br><span class="muted">${x.useRule}</span></td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid3">
+            ${card("今天需要避开的方向", `<p>${(macro.avoidDirections || []).map(x => `<b>${x.direction}</b>：${x.reason}`).join("</p><p>")}</p>`)}
+            ${card("对推荐方向的修正", `<p>${(macro.recommendationAdjustments || []).map(x => `<b>${x.item}</b>：${x.adjustment}`).join("</p><p>")}</p>`)}
+            ${card("最终交易指令", `<p>${macro.finalCommand || "先控科技集中度，再等资金方向确认。"}</p>`)}
+          </div>
+          <div class="section card"><h2>投研观点：我看好什么，为什么</h2>
+            <table><thead><tr><th>排序</th><th>观点</th><th>理由</th><th>A股映射</th><th>触发条件</th><th>失败信号</th></tr></thead><tbody>
+              ${(macro.convictionViews || []).map(x => `<tr><td>${x.rank}</td><td><b>${x.view}</b></td><td>${x.why}</td><td>${x.aShareMap}</td><td>${x.trigger}</td><td>${x.fail}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>海外到A股映射框架</h2>
+            <table><thead><tr><th>海外信号</th><th>重点观察</th><th>A股映射</th><th>交易含义</th></tr></thead><tbody>
+              ${(macro.signals || []).map(x => `<tr><td><b>${x.source}</b></td><td>${x.watch}</td><td>${x.aShareMap}</td><td>${x.action}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+        `;
+      }
+
+      if (id === "candidates") {
+        const candidates = state.candidates || [];
+        const tracked = state.trackedCandidates || [];
+        html = `
+          <div class="card notice dense">
+            <h2>主升前爬坡候选池</h2>
+            <p>这页不再追“已经暴涨的龙头”，重点找：周线刚从无人区走出来、资金开始持续进场、产业逻辑正在变强、市场共识还没完全形成的票。</p>
+            <p><b>本次扫描：</b>${state.meta?.candidateScanScope || "等待全市场候选扫描结果"}。</p>
+            <p><b>筛选顺序：</b>先看周K硬条件，再看量能台阶，然后看80-300亿市值弹性、行业方向和财务/公告边际改善。日K只用于买点，不用于先选票。</p>
+            <p><b>跟踪规则：</b>从入选日开始计算累计涨跌；30 天内如果再次入选，会延长跟踪周期；超过 30 天没有再次入选，就从跟踪池移除。</p>
+            <p><b>宏观过滤：</b>${macro.summary || "候选股必须结合海外科技、亚洲半导体、汇率和政策环境判断。"}</p>
+            <p><b>全市场口径：</b>候选股不只看科技。每天从科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链和军工低空里同台打分；如果资金不在科技，非科技候选优先级会上调。</p>
+            <p><b>交易权限口径：</b>科创板和北证暂不进入可买候选；但科创50、科创半导体设备/材料/创新药仍作为科技风向和产业链映射观察。创业板可以进入候选。</p>
+            <p><b>美股涨幅榜映射：</b>如果美股涨幅榜集中出现AI硬件、光模块、电力基础设施、金融科技或创新药，A股候选池会优先看对应映射方向；单只美股异动不算主线。</p>
+            <p><b>日韩涨幅榜映射：</b>日本主要验证半导体设备、机器人、汽车电子；韩国主要验证存储/HBM、电池材料和互联网风险偏好。涨幅榜必须看板块集体性和涨幅逻辑。</p>
+          </div>
+          <div class="section card"><h2>今日 5 只爬坡候选</h2>
+            <table><thead><tr><th>排名</th><th>股票</th><th>主线/市值</th><th>周K位置</th><th>评分拆解</th><th>阶段/今日</th><th>判断/财务边际</th><th>买点</th><th>禁买/失败</th></tr></thead><tbody>
+              ${candidates.map((c, i) => `<tr>
+                <td>${i + 1}</td>
+                <td><b>${c.name}</b><br><span class="muted">${c.code || ""}</span></td>
+                <td>${c.theme || "-"}<br><span class="muted">总市值：${c.marketCapYi ? `${c.marketCapYi}亿` : "待取数"}</span></td>
+                <td><span class="muted">3个月：${fmtPct(c.quarterReturn)}</span><br><span class="muted">1年：${fmtPct(c.yearReturn)}</span><br><span class="muted">距52周高：${fmtPct(c.distanceToHighPct)}</span><br><span class="muted">20周线：${c.closeAbove20w ? "上方" : "待确认"}；均线：${c.maQueue ? "排队" : "未排队"}；量能：${c.volumeStairPass ? "上台阶" : "待确认"}</span></td>
+                <td><b>${c.climbScore ?? c.score}/10</b><br><span class="muted">5倍相似度：${c.fiveXScore ?? "-"} / 10</span><br><span class="muted">周线${c.weeklyTrendScore ?? "-"} 量能${c.volumeScore ?? "-"} 市值${c.marketCapScore ?? "-"} 行业${c.industryScore ?? "-"} 财务${c.financialScore ?? "-"} 结构${c.structureScore ?? "-"}</span></td>
+                <td><b>${c.phase || "-"}</b><br><span class="${pctClass(c.dayPct)}">${fmtPct(c.dayPct)}</span><br><span class="muted">热度：${c.heatLevel || "-"}</span></td>
+                <td>${c.technical || "-"}<br><span class="muted">${c.news || ""}</span><br><span class="muted">5倍模型：${c.fiveXRead || "待确认"}</span><br><span class="muted">财务/公告边际：${c.financialEdge || "待确认"}</span><br><span class="muted">${c.selectionReason || ""}</span></td>
+                <td>${c.buyPoint || c.trigger || "-"}</td>
+                <td>${c.noBuySignal || c.fail || "-"}<br><span class="muted">${c.fail || ""}</span></td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card"><h2>1个月滚动跟踪池（最多100只）</h2>
+            <p class="muted">只保留当前规则确认过、或历史评分仍不低于 6.5 的票；旧逻辑遗留、评分不足、没有再入选证据的股票会自动移除。累计涨跌从首次跟踪日的入选价开始计算。</p>
+            <table><thead><tr><th>股票</th><th>分数/阶段</th><th>首次跟踪</th><th>跟踪天数</th><th>最近入选</th><th>入选价/现价</th><th>今日涨跌</th><th>累计涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
+              ${tracked.map(t => `<tr>
+                <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
+                <td><b>${t.climbScore ?? t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "合格跟踪"}</span></td>
+                <td>${t.firstTrackedDate || "-"}</td>
+                <td>${t.trackingDays ?? "-"}</td>
+                <td>${t.lastSelectedDate || "-"}</td>
+                <td>${t.entryPrice ?? "-"}<br>${t.currentPrice ?? "-"}</td>
+                <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}</td>
+                <td class="${pctClass(t.returnPct)}">${fmtPct(t.returnPct)}</td>
+                <td>${t.theme || "-"}</td>
+                <td>${t.status || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid3">
+            ${card("周K第一", "<p>股价在20周线上方，5/10/20周线排队，20周线向上，近3个月涨幅20%-80%，近1年不超过200%，靠近或突破52周新高。</p>")}
+            ${card("量能和市值", "<p>成交额中枢慢慢上台阶，上涨放量下跌缩量，突破不放历史天量；总市值优先80-300亿，兼顾基本面稳定和弹性。</p>")}
+            ${card("买点纪律", "<p>只看两类：刚突破平台但没连续大涨，或突破后第一次回踩10日线/10周线不破。连续大阳、天量长上影、跌破20周线一律不追。</p>")}
+          </div>
+        `;
+      }
+
+      if (id === "tradeTracking") {
+        const trackedTrades = state.tradeTracking || [];
+        html = `
+          <div class="card notice dense">
+            <h2>我的个人交易跟踪池</h2>
+            <p>这里不是市场观察池，而是你的个人交易记忆：当前持仓、曾经买入过、已经卖出的股票，都可以继续跟踪。</p>
+            <p><b>核心指标：</b>当天涨跌幅、从进入跟踪池当天价格开始计算的股票实际累计涨跌幅、是否触发买入/加仓/卖出/降仓信号。</p>
+            <p><b>口径说明：</b>累计涨跌只看股票走势，不等于你的账户持仓盈亏，也不使用账户成本价。</p>
+            <p><b>使用方式：</b>卖出的票不删除，继续复盘“卖得对不对”；买过的票如果重新走强，可以重新触发观察或买入信号。</p>
+          </div>
+          <div class="section card"><h2>跟踪池列表</h2>
+            <table><thead><tr><th>股票</th><th>状态/主线</th><th>跟踪开始</th><th>入选价/现价</th><th>当天涨跌</th><th>入选后累计涨跌</th><th>信号</th><th>逻辑</th></tr></thead><tbody>
+              ${trackedTrades.map(t => `<tr>
+                <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
+                <td>${t.status || "-"}<br><span class="muted">${t.theme || ""}</span></td>
+                <td>${t.startDate || "-"}</td>
+                <td>${t.startPrice ?? "-"} / ${t.currentPrice ?? "-"}</td>
+                <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}</td>
+                <td class="${pctClass(t.cumulativePct)}">${fmtPct(t.cumulativePct)}</td>
+                <td><b>${t.signal || "-"}</b><br>${t.signalReason || ""}</td>
+                <td><span class="muted">${t.buyLogic || ""}</span><br><span class="muted">${t.sellLogic || ""}</span></td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid3">
+            ${card("买入/加仓逻辑", "<p>板块资金回流、个股站回5日/10日线、成交额放大、海外/政策映射配合，四个条件至少满足三个才考虑。</p>")}
+            ${card("卖出/降仓逻辑", "<p>跌破关键支撑、放量大跌、累计回撤触发风控、板块主线转弱且反弹无量，任一强信号都要处理。</p>")}
+            ${card("卖出后复盘", "<p>卖出的股票继续留在池里。如果卖后继续跌，说明卖出有效；如果重新走强，再按买入逻辑重新评估。</p>")}
+          </div>
+        `;
+      }
+
+      if (id === "fiveX") {
+        const model = macro.fiveXModel || {};
+        const samples = model.samples || [];
+        const traits = model.traits || [];
+        const rules = model.rules || [];
+        const dailyIntegration = model.dailyIntegration || [];
+        const fiveXCandidates = state.fiveXCandidates || state.candidates || [];
+        const trackedFiveX = state.trackedFiveXIdeas || [];
+        html = `
+          <div class="card notice dense">
+            <h2>${model.title || "近5年A股一年5倍股模型"}</h2>
+            <p><b>核心结论：</b>${model.conclusion || "5倍股通常来自技术结构、硬催化、业绩或产业周期和资金共振，不是单一K线形态。"}</p>
+            <p><b>样本口径：</b>${model.sampleNote || "代表性样本用于提炼框架，不等于完整名单。"}</p>
+          </div>
+          <div class="section card dense">
+            <h2>当前候选的5倍股相似度</h2>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>爬坡分</th><th>5倍相似度</th><th>阶段</th><th>模型结论</th></tr></thead><tbody>
+              ${fiveXCandidates.map(c => `<tr>
+                <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
+                <td class="nowrap">${c.climbScore ?? "-"}/10</td>
+                <td class="nowrap"><b>${c.fiveXScore ?? "-"}/10</b></td>
+                <td>${c.phase || "-"}</td>
+                <td>${c.fiveXRead || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="section card dense">
+            <h2>5倍股相似度 1个月滚动池（最多100只）</h2>
+            <p class="muted">只跟踪 5倍相似度不低于 6.5 的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>相似度/阶段</th><th>入选/更新</th><th>价格</th><th>涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
+              ${trackedFiveX.map(t => `<tr>
+                <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
+                <td><b>${t.fiveXScore ?? t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "-"}</span></td>
+                <td><span class="muted">首次</span> ${t.firstTrackedDate || "-"}<br><span class="muted">最近</span> ${t.lastSelectedDate || "-"}</td>
+                <td><span class="muted">入选</span> ${t.entryPrice ?? "-"}<br><span class="muted">现价</span> ${t.currentPrice ?? "-"}</td>
+                <td><span class="${pctClass(t.dayPct)}">今日 ${fmtPct(t.dayPct)}</span><br><span class="${pctClass(t.returnPct)}">累计 ${fmtPct(t.returnPct)}</span></td>
+                <td>${t.theme || "-"}</td>
+                <td>${t.status || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="section card">
+            <h2>代表样本：一年5倍级别股票怎么出现</h2>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>年份</th><th>核心驱动</th><th>技术面</th><th>消息/基本面</th><th>给我的启发</th></tr></thead><tbody>
+              ${samples.map(x => `<tr>
+                <td><b>${x.name}</b><br><span class="muted">${x.code}</span></td>
+                <td>${x.year || "-"}</td>
+                <td>${x.driver || "-"}</td>
+                <td>${x.technical || "-"}</td>
+                <td>${x.message || "-"}</td>
+                <td>${x.lesson || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="section card">
+            <h2>共性拆解</h2>
+            <table><thead><tr><th>维度</th><th>5倍股常见特征</th><th>每天怎么用</th></tr></thead><tbody>
+              ${traits.map(x => `<tr><td><b>${x.dimension}</b></td><td>${x.rule}</td><td>${x.use}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid3">
+            ${card("进入候选池", `<p>${rules.slice(0, 2).join("</p><p>")}</p>`)}
+            ${card("买入纪律", `<p>${rules.slice(2, 5).join("</p><p>")}</p>`)}
+            ${card("卖出/降级", `<p>${rules.slice(5).join("</p><p>")}</p>`)}
+          </div>
+          <div class="section card good dense">
+            <h2>如何整合进每日判断</h2>
+            <p>${dailyIntegration.map(x => `<b>·</b> ${x}`).join("</p><p>")}</p>
+          </div>
+        `;
+      }
+
+      if (id === "value") {
+        const ideas = state.oversoldValueIdeas || [];
+        const trackedValue = state.trackedValueIdeas || [];
+        html = `
+          <div class="card notice dense">
+            <h2>全市场估值质量扫描</h2>
+            <p><b>定位：</b>这页优先看硬指标，不再主要看跌幅。底层先扫全A快照，按PE、PB、市值、换手、成交额承接等指标初筛，再要求补查ROE、现金流、利润趋势和行业位置。</p>
+            <p><b>扫描范围：</b>${state.meta?.scanScope || "等待全市场扫描结果"}。</p>
+            <p><b>数据边界：</b>当前自动硬指标已包含PE、PB、市值、换手、成交额；ROE、经营现金流、利润趋势和估值分位还需要后续接入财务数据，不会在未取数时冒充已验证。</p>
+            <p><b>买点：</b>低PE/PB只是入门，不等于可以买。必须确认利润没有继续恶化、现金流可靠、行业不是永久下行，再等技术止跌。</p>
+          </div>
+          <div class="section card">
+            <h2>当前估值质量观察名单</h2>
+            <table><thead><tr><th>排序</th><th>股票</th><th>方向</th><th>评分/阶段</th><th>硬指标</th><th>市场数据</th><th>验证重点</th><th>动作</th><th>风险</th></tr></thead><tbody>
+              ${ideas.map((x, i) => `<tr>
+                <td>${i + 1}</td>
+                <td><b>${x.name}</b><br><span class="muted">${x.code}</span></td>
+                <td>${x.theme || "-"}</td>
+                <td><b>${x.score}/10</b><br>${x.phase}</td>
+                <td>PE:${x.peTtm ?? x.pe ?? "待取数"}<br>PB:${x.pb ?? "待取数"}<br><span class="muted">市值:${x.marketCapYi ?? "待取数"}亿</span></td>
+                <td><span class="${pctClass(x.dayPct)}">今日：${fmtPct(x.dayPct)}</span><br><span class="muted">换手：${x.turnover ?? "待取数"}%</span><br><span class="muted">成交：${x.amount || "-"}</span></td>
+                <td>${x.keyCheck || "-"}</td>
+                <td>${x.action || "-"}</td>
+                <td>${x.risk || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card">
+            <h2>估值质量 1个月滚动池（最多100只）</h2>
+            <p class="muted">评分不低于 5 分进入跟踪；重复入选会延长跟踪期。累计涨跌从首次入选价开始算，用来检验低估修复是否真正兑现。</p>
+            <table><thead><tr><th>股票</th><th>评分/阶段</th><th>首次入选</th><th>最近入选</th><th>入选价/现价</th><th>今日涨跌</th><th>累计涨跌</th><th>硬指标</th><th>状态</th></tr></thead><tbody>
+              ${trackedValue.map(t => `<tr>
+                <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
+                <td><b>${t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "-"}</span></td>
+                <td>${t.firstTrackedDate || "-"}</td>
+                <td>${t.lastSelectedDate || "-"}</td>
+                <td>${t.entryPrice ?? "-"}<br>${t.currentPrice ?? "-"}</td>
+                <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}</td>
+                <td class="${pctClass(t.returnPct)}">${fmtPct(t.returnPct)}</td>
+                <td>PE:${t.peTtm ?? t.pe ?? "-"} PB:${t.pb ?? "-"}<br><span class="muted">市值:${t.marketCapYi ?? "-"}亿</span></td>
+                <td>${t.status || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section grid3">
+            ${card("什么才算低估", "<p>PE/PB处在合理低位，同时ROE、现金流、分红或利润趋势不能明显恶化。</p>")}
+            ${card("不能买的便宜", "<p>低PE可能是利润即将下修，低PB可能是资产质量差。没有ROE和现金流支撑，就是价值陷阱。</p>")}
+            ${card("和5倍股模型的区别", "<p>5倍股模型找进攻弹性，超跌低估模型找修复赔率。前者看主升，后者看止跌和预期差。</p>")}
+          </div>
+        `;
+      }
+
+      if (id === "input") {
+        html = `
+          <div class="card"><h2>每日录入</h2>
+            <textarea id="draft">日期：
+持仓变化：
+股票代码/名称：
+仓位：
+成本：
+今日操作：
+观察股票：
+盘中感受：
+想重点分析的问题：</textarea>
+            <p>
+              <button class="action" onclick="navigator.clipboard.writeText(document.getElementById('draft').value)">复制内容</button>
+              <button class="action" onclick="localStorage.setItem('a_stock_daily_draft',document.getElementById('draft').value)">保存草稿</button>
+              <button class="action" onclick="localStorage.removeItem('a_stock_daily_draft');location.reload()">重置模板</button>
+            </p>
+          </div>
+        `;
+      }
+
+      if (id === "diagnosis") {
+        html = `<div class="card notice dense"><h2>诊断前置条件</h2><p>${macro.summary || "先确认宏观/海外环境，再看个股技术面。"}</p></div><div class="section card"><h2>持仓诊断</h2>${holdingsTable()}</div>`;
+      }
+
+      if (id === "discipline") {
+        html = `
+          <div class="grid3">
+            ${card("明日纪律", "<p>先处理风险，再找机会。任何反弹都要看量能和资金，不因跌多就默认反包。</p>")}
+            ${card("仓位纪律", "<p>富特单票42.95%偏高，若补跌，先降到35%-38%；江丰若材料链不反包，降到10%以内；鼎龙弱势则清尾仓。</p>")}
+            ${card("预案口径", "<p>早盘版必须写清数据时间和缺口。云端版会先自动补行情，深度新闻研判后续可接分析模型。</p>")}
+          </div>
+        `;
+      }
+
+      document.getElementById("main").innerHTML = html;
+      const saved = localStorage.getItem("a_stock_daily_draft");
+      const draft = document.getElementById("draft");
+      if (draft && saved) draft.value = saved;
+    }
+
+    function holdingsTable() {
+      return `<table><thead><tr><th>股票</th><th>仓位/主线</th><th>持仓收益</th><th>收盘/当日涨跌</th><th>日内高低</th><th>风险等级与动作</th></tr></thead><tbody>${holdingsRows()}</tbody></table>`;
+    }
+
+    function initTabs() {
+      const tabs = document.getElementById("tabs");
+      tabs.innerHTML = TABS.map(([id, label], i) => `<button class="tab ${i === 0 ? "active" : ""}" data-id="${id}">${label}</button>`).join("");
+      tabs.querySelectorAll(".tab").forEach(btn => {
+        btn.addEventListener("click", () => {
+          tabs.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+          btn.classList.add("active");
+          render(btn.dataset.id);
+        });
+      });
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch("data/dashboard.json?ts=" + Date.now(), { cache: "no-store" });
+        if (res.ok) state = await res.json();
+      } catch (error) {
+        state = fallbackData;
+      }
+      document.getElementById("subtitle").textContent = `${state.meta.version || "云端版"} · ${state.meta.dataSource || ""}`;
+      document.getElementById("updateBox").innerHTML = `页面更新时间：${state.meta.lastUpdated || "-"}<br>版本：${state.meta.session || "-"}<br>指导对象：${state.meta.guidanceTarget || "-"}<br>固定口径：工作日 09:00 / 12:30 / 17:00，周末 17:00`;
+      initTabs();
+      render("overview");
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
+
