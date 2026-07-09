@@ -1020,9 +1020,9 @@ async function fetchKospiQuote(previous) {
 
 function riskFor(stock) {
   if (stock.name === "富特科技") {
-    if (stock.pct < -3 || stock.accountReturnPct < 0) return ["核心仓风控", "单票仍接近四成，若跌破当日低点或放量转弱，优先降到35%以内。"];
-    if (stock.pct > 0) return ["核心仓持有", "今天继续强于组合，是当前防线；只持有不追加，冲高放量滞涨可先落袋一部分。"];
-    return ["核心仓持有", "小跌但仍盈利，先持有观察；若不能守住短线趋势，考虑把仓位降到35%左右。"];
+    if (stock.pct < -3 || stock.accountReturnPct < 0) return ["成长仓风控", "仓位约22%，不再按重仓处理；若跌破当日低点或放量转弱，先看高压快充板块是否共振，弱则降风险。"];
+    if (stock.pct > 0) return ["成长仓持有", "今天强于组合，但只持有不追加；冲高放量滞涨可落袋一部分，等财报/订单确认。"];
+    return ["成长仓持有", "小幅波动先持有观察；若不能守住短线趋势，按高波动成长仓控制回撤。"];
   }
   if (stock.name === "浪潮信息") {
     if (HOLDING_HARD_EVENTS.some(event => event.code === "000977" && /业绩预告/.test(event.title))) {
