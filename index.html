@@ -179,16 +179,16 @@
       },
       portfolio: {
         totalValue: "",
-        positionRatio: "84.44%",
+        positionRatio: "85.98%",
         profit: "",
         privacyNote: "按用户要求，网页不展示账户金额，只展示仓位比例、收益百分比和交易状态。",
         stance: "防守",
         holdings: [
-          { name: "富特科技", code: "301607", weight: "42.95%", accountReturnPct: 0.82, close: 52.22, pct: 1.22, high: 53.20, low: 49.50, action: "核心仓观察但不加仓。", risk: "核心仓观察", theme: "新能源车高压电源/800V快充" },
-          { name: "江丰电子", code: "300666", weight: "15.68%", accountReturnPct: -14.02, close: 342.47, pct: -13.15, high: 375.00, low: 340.51, action: "已降仓，等待材料链修复确认。", risk: "风险升高", theme: "高纯靶材/半导体材料" },
-          { name: "浪潮信息", code: "000977", weight: "15.66%", accountReturnPct: -0.46, close: 66.35, pct: 4.01, high: 67.00, low: 63.00, action: "新仓验证，等AI服务器链放量确认。", risk: "新仓验证", theme: "AI服务器/国产算力" },
-          { name: "中材科技", code: "002080", weight: "8.03%", accountReturnPct: 27.29, close: 82.22, pct: -7.31, high: 86.80, low: 81.59, action: "仓位下降后做利润保护。", risk: "利润保护", theme: "玻纤/电子布/新能源材料" },
-          { name: "鼎龙股份", code: "300054", weight: "2.12%", accountReturnPct: -28.28, close: 93.37, pct: -6.91, high: 98.37, low: 90.85, action: "小仓保留观察，不加仓。", risk: "弱势小仓", theme: "CMP/光刻胶材料" }
+          { name: "巨化股份", code: "600160", weight: "30.85%", accountReturnPct: -1.01, close: 45.72, pct: -1.01, action: "周期防守仓，先看制冷剂/氟化工承接。", risk: "周期防守仓", theme: "制冷剂/氟化工/周期涨价" },
+          { name: "富特科技", code: "301607", weight: "22.85%", accountReturnPct: -9.70, close: 47.81, pct: -9.70, action: "从重仓降为验证仓，先止跌再谈加仓。", risk: "高波动验证仓", theme: "新能源车高压电源/800V快充" },
+          { name: "浪潮信息", code: "000977", weight: "21.98%", accountReturnPct: 10.00, close: 78.17, pct: 10.00, action: "业绩预告超预期，持有看承接，不追高。", risk: "业绩兑现主线仓", theme: "AI服务器/国产算力" },
+          { name: "江丰电子", code: "300666", weight: "18.78%", accountReturnPct: 1.48, close: 333.86, pct: 1.48, action: "半导体材料仓，必须看材料链共振修复。", risk: "材料链修复仓", theme: "高纯靶材/半导体材料" },
+          { name: "欣锐科技", code: "300745", weight: "5.54%", accountReturnPct: -11.78, close: 49.24, pct: -11.78, action: "小仓验证，不补跌，不扩大同方向暴露。", risk: "止损观察仓", theme: "新能源车车载电源/高压快充" }
         ]
       },
       watchlist: [
@@ -204,6 +204,7 @@
     let state = fallbackData;
 
     function fmtPct(v) {
+      if (v === null || v === undefined || v === "") return "-";
       const n = Number(v);
       if (!Number.isFinite(n)) return v || "-";
       return (n > 0 ? "+" : "") + n.toFixed(2) + "%";

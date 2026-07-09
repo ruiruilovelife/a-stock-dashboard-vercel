@@ -98,7 +98,7 @@ source = source.replace(
   "return `指数趋势：${trendLine}。科技成长线明显承压，先防守再找修复。明天重点看创业板/科创50是否止跌，以及半导体材料是否有核心股反包。`;"
 );
 source = source.replace(/return "指数未必最弱，但半导体材料链内部压力较大，组合需要降低弱势科技仓暴露。";/, "return `指数趋势：${trendLine}。指数未必最弱，但半导体材料链内部压力较大，组合需要降低弱势科技仓暴露。`;");
-source = source.replace(/return "市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。";/, "return `指数趋势：${trendLine}。市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。`;");
+source = source.replace(/return "市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。";/, "return `指数趋势：${trendLine}。市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。`;"); 
 
 source = source.replace(
   /const sh = indices\.find\(x => x\.name === "上证指数"\)\?\.pct \?\? 0;\n  const cyb = indices\.find\(x => x\.name === "创业板指"\)\?\.pct \?\? 0;\n  const kc = indices\.find\(x => x\.name === "科创50"\)\?\.pct \?\? 0;/,

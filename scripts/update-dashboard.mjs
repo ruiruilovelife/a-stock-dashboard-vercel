@@ -6,25 +6,24 @@ const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.5";
 const TUSHARE_TOKEN = process.env.TUSHARE_TOKEN || "";
 
 const STOCKS = [
-  ["sz301607", "富特科技", "301607", "38.16%", "新能源车高压电源/800V快充", 50.724],
-  ["sz000977", "浪潮信息", "000977", "18.07%", "AI服务器/国产算力", 66.656],
-  ["sz300666", "江丰电子", "300666", "16.94%", "高纯靶材/半导体材料", 386.335],
-  ["sh600160", "巨化股份", "600160", "16.53%", "制冷剂/氟化工/周期涨价", 49.803],
-  ["sz300745", "欣锐科技", "300745", "10.30%", "新能源车车载电源/高压快充", 51.003]
+  ["sh600160","巨化股份","600160","32.26%","制冷剂/氟化工/周期涨价",47.286],
+  ["sz000977","浪潮信息","000977","29.18%","AI服务器/国产算力",72.782],
+  ["sz301607","富特科技","301607","22.06%","新能源车高压电源/800V快充",54.997],
+  ["sz300666","江丰电子","300666","16.49%","高纯靶材/半导体材料",386.335]
 ];
 
 const TRADE_TRACKING_BASE = [
-  ["sz301607", "富特科技", "301607", "当前持仓", "新能源车高压电源/800V快充"],
-  ["sz000977", "浪潮信息", "000977", "当前持仓", "AI服务器/国产算力"],
-  ["sz300666", "江丰电子", "300666", "当前持仓", "高纯靶材/半导体材料"],
-  ["sh600160", "巨化股份", "600160", "当前持仓", "制冷剂/氟化工/周期涨价"],
-  ["sz300745", "欣锐科技", "300745", "当前持仓", "新能源车车载电源/高压快充"],
-  ["sz002080", "中材科技", "002080", "已清仓", "玻纤/电子布/新能源材料"],
-  ["sz300054", "鼎龙股份", "300054", "已清仓", "CMP/光刻胶材料"],
-  ["sz002617", "露笑科技", "002617", "已清仓", "功率半导体/碳化硅"],
-  ["sz300395", "菲利华", "300395", "已清仓", "石英材料/军工材料"],
-  ["sz002409", "雅克科技", "002409", "已清仓", "电子材料/前驱体/特气"],
-  ["sz000100", "TCL科技", "000100", "已清仓", "面板/半导体显示"]
+  ["sh600160","巨化股份","600160","当前持仓","制冷剂/氟化工/周期涨价"],
+  ["sz000977","浪潮信息","000977","当前持仓","AI服务器/国产算力"],
+  ["sz301607","富特科技","301607","当前持仓","新能源车高压电源/800V快充"],
+  ["sz300666","江丰电子","300666","当前持仓","高纯靶材/半导体材料"],
+  ["sz300745","欣锐科技","300745","已清仓","新能源车车载电源/高压快充"],
+  ["sz002080","中材科技","002080","已清仓","玻纤/电子布/新能源材料"],
+  ["sz300054","鼎龙股份","300054","已清仓","CMP/光刻胶材料"],
+  ["sz002617","露笑科技","002617","已清仓","功率半导体/碳化硅"],
+  ["sz300395","菲利华","300395","已清仓","石英材料/军工材料"],
+  ["sz002409","雅克科技","002409","已清仓","电子材料/前驱体/特气"],
+  ["sz000100","TCL科技","000100","已清仓","面板/半导体显示"]
 ];
 
 const HOLDING_HARD_EVENTS = [
@@ -35,6 +34,7 @@ const HOLDING_HARD_EVENTS = [
     code: "000977",
     title: "2026年半年度业绩预告",
     type: "业绩预告",
+    priority: "P0持仓",
     importance: "持仓重大利好/AI服务器业绩兑现",
     url: "http://static.cninfo.com.cn/finalpage/2026-07-08/1225414299.PDF",
     facts: [
@@ -805,6 +805,51 @@ function buildWeeklyProfile(klines) {
   };
 }
 
+
+function buildIndexTrendProfile(profile, dayPct) {
+  if (!profile) {
+    return {
+      status: "趋势待确认",
+      score: 0,
+      read: "只拿到当日涨跌，暂不能下中期结论。",
+      action: "不因为单日红绿改变仓位，等周线和全A宽度确认。"
+    };
+  }
+  let score = 0;
+  if (profile.closeAbove20w) score += 2;
+  else score -= 2;
+  if (profile.maQueue) score += 1;
+  if (profile.ma20Rising) score += 2;
+  else score -= 1;
+  if (Number(profile.quarterReturn) > 8) score += 1;
+  if (Number(profile.quarterReturn) < -8) score -= 1;
+  if (profile.volumeStairPass && Number(dayPct) > 0) score += 1;
+  if (profile.volumeStairPass && Number(dayPct) < -1) score -= 1;
+
+  const status = score >= 4
+    ? "中期上行"
+    : score >= 2
+      ? "震荡偏强"
+      : score <= -3
+        ? "中期破位"
+        : "震荡偏弱";
+  const read = [
+    profile.closeAbove20w ? "在20周线上方" : "低于20周线",
+    profile.ma20Rising ? "20周线向上" : "20周线未上行",
+    profile.maQueue ? "5/10/20周线排队" : "均线未排队",
+    Number.isFinite(Number(profile.quarterReturn)) ? `近3个月${profile.quarterReturn}%` : "近3个月待确认",
+    Number.isFinite(Number(profile.distanceToHighPct)) ? `距52周高点${profile.distanceToHighPct}%` : "52周位置待确认"
+  ].join("，");
+  const action = status === "中期上行"
+    ? "指数趋势支持结构性进攻，但仍要看成交额和主线扩散。"
+    : status === "震荡偏强"
+      ? "可以做强主线，不适合全面加仓。"
+      : status === "中期破位"
+        ? "指数趋势不支持重仓进攻，先降弱势和高波动仓。"
+        : "指数趋势偏弱，仓位跟随板块确认，不提前押满。";
+  return { status, score, read, action };
+}
+
 async function fetchWeeklyProfiles(pool) {
   const map = new Map();
   for (let i = 0; i < pool.length; i += 4) {
@@ -1147,6 +1192,9 @@ function isTrackableCandidate(c) {
     && isBuyableAShareCode(c.code)
     && Number(c.climbScore) >= 6.5
     && Number(c.fiveXScore ?? 0) >= 6.5
+    && Number.isFinite(Number(c.quarterReturn))
+    && Number.isFinite(Number(c.yearReturn))
+    && Number.isFinite(Number(c.distanceToHighPct))
     && (!Number.isFinite(Number(c.yearReturn)) || Number(c.yearReturn) <= 230)
     && c.heatLevel !== "过热"
     && c.phase !== "主升后段/趋势锚"
@@ -1344,7 +1392,7 @@ function buildMarketWideCandidates(snapshot) {
         climbScore,
         fiveXScore,
         fiveXRead: fiveXRead(fiveXScore),
-        phase: fiveXScore >= 7 ? "全市场初筛/待周线确认" : "全市场初筛/待验证",
+        phase: "全市场初筛/待历史行情",
         dayPct: row.dayPct,
         amount: amountText(row.amountRaw),
         marketCapYi: row.marketCapYi,
@@ -1352,9 +1400,9 @@ function buildMarketWideCandidates(snapshot) {
         peTtm: row.peTtm,
         pb: row.pb,
         turnover: row.turnover,
-        quarterReturn: null,
-        yearReturn: null,
-        distanceToHighPct: null,
+        quarterReturn: "待补历史行情",
+        yearReturn: "待补历史行情",
+        distanceToHighPct: "待补历史行情",
         closeAbove20w: null,
         maQueue: null,
         ma20Rising: null,
@@ -1371,10 +1419,10 @@ function buildMarketWideCandidates(snapshot) {
         marketCapScore: "-",
         financialScore: "-",
         heatLevel: Number(row.dayPct) > 5 ? "偏热" : "不热",
-        technical: "全市场快照初筛通过，但还没有完成周线和财报核验，不能直接按强弹性票买入。",
+        technical: "全市场快照初筛通过，但缺少周K/年线/量能历史行情，不能进入强弹性正式候选。",
         trigger: "补查周K站上20周线、成交额中枢抬升、行业有催化后再升级。",
         fail: "PE/PB低但利润下修、换手异常放大冲高回落、或补查周线仍在下降趋势。",
-        buyPoint: "只作为全市场初筛名单；等周线、财报和行业逻辑补齐后再决定是否小仓验证。",
+        buyPoint: "补齐周K、年线、量能和财报后再决定是否小仓验证。",
         noBuySignal: "未完成周线/财报核验前不买；低PE/PB不能替代产业逻辑。",
         close: row.close,
         selectionReason: "全市场快照筛出，不来自手工股票池。"
@@ -1930,32 +1978,38 @@ function median(values) {
 }
 
 function marketConclusion(indices, holdings, internals = {}) {
+  const trendLine = indices.map(i => `${i.name}${i.trend?.status || "趋势待确认"}：${i.trend?.read || "周线待确认"}`).join("；");
   const cyb = indices.find(x => x.name === "创业板指")?.pct ?? 0;
   const kc = indices.find(x => x.name === "科创50")?.pct ?? 0;
   const sh = indices.find(x => x.name === "上证指数")?.pct ?? 0;
   const semiWeak = holdings.filter(h => ["江丰电子", "雅克科技", "鼎龙股份", "菲利华"].includes(h.name) && h.pct < -4).length;
   if (internals.emotion === "弱势防守") {
-    return `指数和全A内部结构偏弱：${internals.read} 这不是可以随便进攻的盘面，明天先看弱势行业是否止跌、强势方向是否有持续承接。`;
+    return `指数趋势：${trendLine}。指数和全A内部结构偏弱：${internals.read} 这不是可以随便进攻的盘面，明天先看弱势行业是否止跌、强势方向是否有持续承接。`;
   }
   if (internals.emotion === "赚钱效应扩散") {
-    return `全A赚钱效应扩散：${internals.read} 可以做结构性进攻，但仍要避开冲高回落和高位拥挤。`;
+    return `指数趋势：${trendLine}。全A赚钱效应扩散：${internals.read} 可以做结构性进攻，但仍要避开冲高回落和高位拥挤。`;
   }
   if (sh < -1 || cyb < -1 || (internals.downRatio && internals.downRatio > 55)) {
-    return `市场处在弱平衡/分化调整：${internals.read || "指数回落但内部结构待确认。"} 强势股可以跟踪，弱势仓不补。`;
+    return `指数趋势：${trendLine}。市场处在弱平衡/分化调整：${internals.read || "指数回落但内部结构待确认。"} 强势股可以跟踪，弱势仓不补。`;
   }
   if (cyb < -3 || kc < -4) {
-    return "科技成长线明显承压，先防守再找修复。明天重点看创业板/科创50是否止跌，以及半导体材料是否有核心股反包。";
+    return `指数趋势：${trendLine}。科技成长线明显承压，先防守再找修复。明天重点看创业板/科创50是否止跌，以及半导体材料是否有核心股反包。`;
   }
   if (semiWeak >= 2) {
-    return "指数未必最弱，但半导体材料链内部压力较大，组合需要降低弱势科技仓暴露。";
+    return `指数趋势：${trendLine}。指数未必最弱，但半导体材料链内部压力较大，组合需要降低弱势科技仓暴露。`;
   }
-  return "市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。";
+  return `指数趋势：${trendLine}。市场未出现系统性破坏，持仓按强弱分层处理：强势核心持有观察，弱势修复不加仓。`;
 }
 
 function buildMacroMap(indices, globalMarkets = [], internals = {}) {
-  const sh = indices.find(x => x.name === "上证指数")?.pct ?? 0;
-  const cyb = indices.find(x => x.name === "创业板指")?.pct ?? 0;
-  const kc = indices.find(x => x.name === "科创50")?.pct ?? 0;
+  const shIndex = indices.find(x => x.name === "上证指数") || {};
+  const cybIndex = indices.find(x => x.name === "创业板指") || {};
+  const kcIndex = indices.find(x => x.name === "科创50") || {};
+  const sh = shIndex.pct ?? 0;
+  const cyb = cybIndex.pct ?? 0;
+  const kc = kcIndex.pct ?? 0;
+  const shTrendScore = Number(shIndex.trend?.score || 0);
+  const growthTrendScore = Math.min(Number(cybIndex.trend?.score || 0), Number(kcIndex.trend?.score || 0));
   const marketPct = (name) => {
     const value = Number(globalMarkets.find(x => x.name === name)?.pct);
     return Number.isFinite(value) ? value : NaN;
@@ -1970,11 +2024,11 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
   const globalTechWeak = soxx < -3 || kospi < -3 || nikkei < -2;
   const internalWeak = internals.emotion === "弱势防守" || Number(internals.downRatio) > 58;
   const internalStrong = internals.emotion === "赚钱效应扩散" || Number(internals.upRatio) > 58;
-  const riskLevel = cyb < -3 || kc < -4 || globalTechWeak || internalWeak ? "偏防守" : internalStrong ? "积极观察" : "中性观察";
-  const growthWeak = cyb < -2 || kc < -3;
-  const growthStrong = cyb > 1.5 || kc > 2;
-  const broadStrong = sh > 0.8;
-  const broadWeak = sh < -1.2;
+  const riskLevel = cyb < -3 || kc < -4 || globalTechWeak || internalWeak || growthTrendScore <= -3 ? "偏防守" : internalStrong && growthTrendScore >= 2 ? "积极观察" : "中性观察";
+  const growthWeak = cyb < -2 || kc < -3 || growthTrendScore <= -3;
+  const growthStrong = (cyb > 1.5 || kc > 2) && growthTrendScore >= 2;
+  const broadStrong = sh > 0.8 && shTrendScore >= 2;
+  const broadWeak = sh < -1.2 || shTrendScore <= -3;
   const marketRegime =
     broadStrong && growthStrong && !globalTechWeak ? "全面牛市观察"
       : growthStrong && !broadWeak && !globalTechWeak ? "结构性牛市"
@@ -2008,8 +2062,8 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
               ? "宽基承压但尚未形成全面崩塌，适合降低频率，只做确定性更高的板块。"
               : "市场大概率是轮动市，追涨容易吃回撤，关键是识别资金正在去哪条主线。",
       scoreItems: [
-        { item: "上证/宽基", value: sh, read: broadStrong ? "宽基走强，全面行情概率上升。" : broadWeak ? "宽基走弱，系统性风险上升。" : "宽基中性，更多是结构行情。" },
-        { item: "创业板/科创", value: Math.min(cyb, kc), read: growthStrong ? "成长风险偏好回升。" : growthWeak ? "成长风险偏好收缩。" : "成长风格中性。" },
+        { item: "上证/宽基", value: sh, read: `${shIndex.trend?.status || "趋势待确认"}：${shIndex.trend?.read || "周线待确认"}。${broadStrong ? "宽基走强，全面行情概率上升。" : broadWeak ? "宽基走弱，系统性风险上升。" : "宽基中性，更多是结构行情。"}` },
+        { item: "创业板/科创", value: Math.min(cyb, kc), read: `创业板${cybIndex.trend?.status || "趋势待确认"}；科创50${kcIndex.trend?.status || "趋势待确认"}。${growthStrong ? "成长风险偏好回升。" : growthWeak ? "成长风险偏好收缩。" : "成长风格中性。"}` },
         { item: "海外科技", value: soxx, read: globalTechWeak ? "海外科技负反馈，A股高估值成长要降预期。" : "海外科技暂不构成系统拖累。" },
         { item: "全A宽度", value: internals.upRatio ?? "待确认", read: internals.read || "没有全A内部结构时，不给强结论。" },
         { item: "资金风格", value: regimeTotal, read: riskLevel === "偏防守" ? "先防守，等确认。" : "可做结构性机会。" }
@@ -2081,7 +2135,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       {
         priority: "1",
         task: "先查持仓公告和财报预告",
-        targets: "富特科技、浪潮信息、江丰电子、中材科技、鼎龙股份",
+        targets: "巨化股份、浪潮信息、富特科技、江丰电子；中材科技、鼎龙股份、欣锐科技等历史交易名单继续跟踪公告但不当作当前持仓",
         whatToFind: "业绩预告、订单/合同、减持、问询、调研纪要、毛利率和现金流变化。",
         decisionUse: "有硬利空先降风险；有超预期财报且板块资金配合，才提高持仓等级。"
       },
@@ -2143,16 +2197,25 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       },
       {
         focus: "持仓映射",
-        watch: "富特看车载电源/高压快充订单和毛利率；浪潮看AI服务器订单和交付；江丰/鼎龙看半导体材料需求、客户验证和毛利；中材看玻纤/电子布价格和新能源材料需求。",
+        watch: "巨化看制冷剂价格、氟化工景气和利润兑现；浪潮看AI服务器订单、交付、毛利率和现金流；富特看车载电源/高压快充订单和毛利率；江丰看靶材客户验证、半导体材料需求和毛利率。",
         highlight: "持仓公司若财报超预期，要同时判断是否能改变仓位等级；弱势仓只有财报和板块资金共振才从修复仓升回进攻仓。",
         nextQuarter: "下一期预想必须写清：继续上修、维持、还是高基数回落。"
       }
     ],
     aShareEarningsTargets: [
       {
+        name: "巨化股份",
+        relation: "当前持仓；制冷剂/氟化工周期验证仓",
+        whyWatch: "当前是组合第一大仓，能否继续持有取决于制冷剂价格、氟化工景气和利润兑现，而不是只看当日涨跌。",
+        keyMetrics: "制冷剂价格、氟化工产品价差、营收增速、毛利率、扣非净利、经营现金流。",
+        bullishRead: "若价格上涨能转化为毛利率和扣非利润改善，说明周期涨价逻辑兑现，可继续作为组合非科技方向主仓。",
+        riskRead: "若价格上涨未体现到利润，或周期股集体退潮，应降低周期仓集中度。",
+        nextQuarterView: "看制冷剂价格持续性、库存和下游需求，判断利润弹性是否还能延续。"
+      },
+      {
         name: "浪潮信息",
-        relation: "当前持仓；AI服务器/国产算力验证仓",
-        whyWatch: "新仓能否成立，关键不只是股价涨，而是AI服务器订单、交付、毛利率和存货周转能否改善。",
+        relation: "当前持仓；AI服务器/国产算力主线仓候选",
+        whyWatch: "已出中报业绩预告，利润同比大幅增长，是当前持仓里最明确的业绩兑现线索。",
         keyMetrics: "营收增速、净利润/扣非增速、毛利率、存货、合同负债、AI服务器订单和客户结构。",
         bullishRead: "若利润同比100%以上且毛利率/订单同步改善，浪潮从验证仓升级为组合主线仓候选。",
         riskRead: "若收入增长但毛利率下滑或存货压力加大，说明AI服务器景气未转化为利润，不宜加仓。",
@@ -2160,8 +2223,8 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       },
       {
         name: "富特科技",
-        relation: "当前持仓；组合核心仓",
-        whyWatch: "仓位42.95%过高，财报必须证明高压电源/800V快充逻辑还能兑现，否则核心仓需要降集中度。",
+        relation: "当前持仓；高波动成长仓",
+        whyWatch: "仓位已降至约22%，仍需财报证明高压电源/800V快充逻辑兑现，不能只按强势股惯性持有。",
         keyMetrics: "车载高压电源收入、毛利率、客户放量、经营现金流、存货和应收账款。",
         bullishRead: "若收入和扣非利润高增，同时毛利率稳定，说明强势股有基本面支撑，可继续持有但不追加。",
         riskRead: "若收入增但现金流/应收恶化，或毛利率受价格战压制，强势可能变成估值透支。",
@@ -2176,28 +2239,10 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
         riskRead: "若利润低于预期或毛利率继续承压，反弹也应减仓，不做摊低。",
         nextQuarterView: "看晶圆厂稼动率、韩国存储周期和国产替代订单是否继续改善。"
       },
-      {
-        name: "鼎龙股份",
-        relation: "当前持仓；小尾仓",
-        whyWatch: "仓位只剩2.12%，财报若不能证明CMP/材料链改善，继续持有的注意力成本不划算。",
-        keyMetrics: "CMP材料、半导体材料收入占比、毛利率、扣非利润、客户验证进展。",
-        bullishRead: "只有财报和材料板块共振强反包，才考虑继续留观察。",
-        riskRead: "若财报一般或板块弱，清尾仓优先。",
-        nextQuarterView: "看客户验证节奏和半导体材料需求是否恢复。"
-      },
-      {
-        name: "中材科技",
-        relation: "当前持仓；利润保护仓",
-        whyWatch: "已有盈利，重点不是进攻，而是判断玻纤/电子布/新能源材料利润能否延续。",
-        keyMetrics: "玻纤价格、电子布需求、毛利率、净利率、风电叶片/新能源材料订单。",
-        bullishRead: "若周期价格和毛利率改善，利润仓可继续持有观察。",
-        riskRead: "若只是短期价格反弹、盈利高基数回落，要锁利润。",
-        nextQuarterView: "看价格修复和电子布/PCB链需求能否持续。"
-      }
     ],
     earningsAnalystSummary: {
       conclusion: "我的财报线索判断：浪潮信息已发布2026H1业绩预告，归母净利润预计26.0-31.0亿元、同比+226%-288%，扣非净利润预计20.55-25.55亿元、同比+206%-280%，属于持仓中的爆发级硬数据。下一阶段重点不是只找同比高，而是判断利润高增能否被订单、毛利率、现金流和板块资金继续验证。",
-      portfolioAdvice: "持仓里，浪潮信息已从AI服务器验证仓升级为业绩兑现主线仓候选，明天看高开后的承接和AI服务器/PCB/液冷/光模块共振，不能无脑追高。富特科技看车载高压电源订单和现金流；江丰电子若材料链财报不反包继续降到10%以内；巨化要看制冷剂涨价是否兑现利润；欣锐看高压快充链是否持续共振。",
+      portfolioAdvice: "持仓里，巨化是周期/制冷剂第一大仓，浪潮是AI服务器业绩兑现主线仓候选，富特是高压快充成长仓，江丰是半导体材料修复仓。欣锐、鼎龙、中材等旧名单继续保留在历史跟踪，不再当作当前持仓。",
       candidateAdvice: "候选股里，财报高增要和周K爬坡、成交额台阶、行业高景气一起看。若一家公司净利同比100%以上但股价已连续大阳、长上影或成交天量，先不追；若财报超预期但周线刚突破平台、量能温和放大，才是重点跟踪对象。",
       currentStatus: "已确认浪潮信息2026年半年度业绩预告为爆发级硬数据；其他持仓和跟踪池公告继续通过巨潮公告雷达滚动捕捉。"
     },
@@ -2212,14 +2257,14 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       {
         direction: "谨慎看待",
         targets: "半导体材料弱势反弹",
-        reason: "江丰/鼎龙所在材料链需要财报和海外存储周期一起确认，否则容易只是跌深反抽。",
+        reason: "江丰所在材料链需要财报和海外存储周期一起确认，否则容易只是跌深反抽。",
         stockMap: "江丰电子、鼎龙股份、安集科技、南大光电、华海清科",
-        action: "江丰不反包继续降风险；鼎龙除非财报和板块同时强，否则清尾仓。"
+        action: "江丰不反包继续降风险；鼎龙作为已清仓历史跟踪，只观察不按当前持仓处理。"
       },
       {
         direction: "持有但不追",
         targets: "新能源车高压快充/车载电源",
-        reason: "富特科技逻辑要靠订单、毛利率和现金流证明；单票仓位已高，财报好也先持有，不盲目加仓。",
+        reason: "富特科技逻辑要靠订单、毛利率和现金流证明；仓位约22%，财报好也先看持续性，不盲目加仓。",
         stockMap: "富特科技、威迈斯、欣锐科技、斯达半导、新洁能",
         action: "财报确认则保留核心仓；若现金流、毛利率或客户放量不佳，降低集中度。"
       },
@@ -2339,15 +2384,15 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       {
         rank: 2,
         view: "我看好富特科技的相对强度，但这已经是风控核心，不是加仓核心。",
-        why: "富特仍是组合里最强的盈利仓和新能源车高压电源/800V快充方向代表，但单票42.95%太集中，后续重点是守利润和控回撤。",
+        why: "富特仍是新能源车高压电源/800V快充方向代表，但仓位已降至约22%，后续重点是看订单、毛利率和现金流能否支撑强势。",
         aShareMap: "富特科技；辅助观察新能源车零部件、功率半导体、快充链。",
         trigger: "继续站稳51.6/50.0且新能源车链有资金回流，可继续持有。",
         fail: "跌破49.50或补跌放量，先把仓位降到35%-38%。"
       },
       {
         rank: 3,
-        view: "江丰电子仍是组合主要风险仓，鼎龙股份只按尾仓处理。",
-        why: "江丰还有15.68%，且持仓收益为负；鼎龙只剩2.12%，继续弱就不值得占用注意力。半导体材料链必须等韩国/日经半导体止跌和A股材料股放量反包。",
+        view: "江丰电子仍是组合半导体材料风险仓，鼎龙股份只作为已清仓历史跟踪。",
+        why: "江丰仓位约16%，材料链必须等韩国/日经半导体止跌和A股材料股放量反包；鼎龙不再按当前持仓处理。",
         aShareMap: "江丰电子、鼎龙股份；辅助观察安集科技、南大光电、华海清科、通富微电、长电科技。",
         trigger: "韩国半导体止跌，A股材料核心股放量反包，江丰不再冲高回落。",
         fail: "弱反弹无量、跌破前低或板块资金继续流出。"
@@ -2361,7 +2406,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
         fail: "板块强它不强，或跌破买入区后无法收回。"
       }
     ],
-    finalAnalystView: "当前我的投研结论：这次调仓方向是对的，卖弱、降低材料链暴露、加入浪潮信息验证AI服务器。但下一步重点不是继续进攻，而是控制富特42.95%的单票集中度，观察浪潮是否确认，江丰若不修复继续降，鼎龙弱则清尾仓，中材只做利润保护。",
+    finalAnalystView: "当前我的投研结论：最新组合集中在巨化、浪潮、富特、江丰四只。巨化验证周期/制冷剂，浪潮验证AI服务器业绩兑现，富特验证高压快充成长，江丰验证半导体材料修复；欣锐、鼎龙、中材等保留在历史跟踪池，不再当作当前仓位。",
     sectorFlowReview: [
       {
         title: "资金仍在AI/科技，但内部开始分化",
@@ -2934,19 +2979,31 @@ function chinaTimeString() {
   }).format(new Date()).replace(/\//g, "-");
 }
 
-function updateSession(now = new Date()) {
+function chinaTimeParts(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false
   }).formatToParts(now);
   const pick = (type) => parts.find(p => p.type === type)?.value;
-  const weekday = pick("weekday");
-  const hour = Number(pick("hour"));
+  const hour = Number(pick("hour")) % 24;
   const minute = Number(pick("minute"));
-  const minutes = hour * 60 + minute;
+  return {
+    date: `${pick("year")}-${pick("month")}-${pick("day")}`,
+    weekday: pick("weekday"),
+    hour,
+    minute,
+    minutes: hour * 60 + minute
+  };
+}
+
+function updateSession(now = new Date()) {
+  const { weekday, minutes } = chinaTimeParts(now);
   const weekend = weekday === "Sat" || weekday === "Sun";
   if (weekend) {
     return {
@@ -2974,6 +3031,46 @@ function updateSession(now = new Date()) {
     target: "明天",
     instruction: "盘后复盘用于指导明天交易，重点看全天资金、收盘结构、夜间海外风险和次日操作预案。"
   };
+}
+
+function shouldRunScheduledUpdate(previous, session, now = new Date()) {
+  if (process.env.GITHUB_EVENT_NAME !== "schedule") return { ok: true, reason: "manual-or-push" };
+
+  const { date, weekday, minutes } = chinaTimeParts(now);
+  const weekend = weekday === "Sat" || weekday === "Sun";
+  const lastUpdated = String(previous?.meta?.lastUpdated || "").replace(/\//g, "-");
+  const lastDate = lastUpdated.slice(0, 10);
+  const lastSession = previous?.meta?.session || "";
+  const updatedToday = lastDate === date;
+
+  const inRange = (start, end) => minutes >= start && minutes <= end;
+  const alreadyHas = (names) => updatedToday && names.includes(lastSession);
+  const hm = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+  if (weekend) {
+    if (inRange(17 * 60, 18 * 60 + 30) && !alreadyHas(["周末复盘版"])) return { ok: true, reason: "weekend-evening" };
+    if (minutes > 18 * 60 + 30 && minutes < 23 * 60 && !alreadyHas(["周末复盘版"])) return { ok: true, reason: "weekend-catchup" };
+    return { ok: false, reason: `skip weekend heartbeat ${date} ${hm}; last=${lastDate || "-"} ${lastSession || "-"}` };
+  }
+
+  if (inRange(8 * 60 + 35, 9 * 60 + 30) && !alreadyHas(["早盘指导版", "午间复盘版", "盘后复盘版"])) {
+    return { ok: true, reason: "morning-window" };
+  }
+  if (inRange(12 * 60 + 20, 13 * 60 + 20) && !alreadyHas(["午间复盘版", "盘后复盘版"])) {
+    return { ok: true, reason: "midday-window" };
+  }
+  if (inRange(17 * 60, 18 * 60 + 30) && !alreadyHas(["盘后复盘版"])) {
+    return { ok: true, reason: "after-close-window" };
+  }
+
+  if (minutes > 13 * 60 + 20 && minutes < 17 * 60 && !alreadyHas(["午间复盘版", "盘后复盘版"])) {
+    return { ok: true, reason: "midday-catchup" };
+  }
+  if (minutes > 18 * 60 + 30 && minutes < 23 * 60 && !alreadyHas(["盘后复盘版"])) {
+    return { ok: true, reason: "after-close-catchup" };
+  }
+
+  return { ok: false, reason: `skip heartbeat ${date} ${hm}; current=${session.name}; last=${lastDate || "-"} ${lastSession || "-"}` };
 }
 
 function modelForSession(session) {
@@ -3080,18 +3177,18 @@ function fallbackModelAnalysis(session, reason) {
     summary: "模型分析未启用；本版结论来自行情、海外映射、候选池规则和持仓纪律。",
     finalCommand: "富特作为核心强势仓持有不加；浪潮信息验证AI服务器方向；江丰不修复继续降；巨化验证周期/制冷剂切换；欣锐只作高压快充小仓验证。",
     actionPriorities: [
-      "富特科技约38%为核心仓，今天强势但不加仓；若跌破短线支撑或放量补跌，先降到35%左右。",
-      "浪潮信息约18%验证AI服务器/国产算力方向，只有AI服务器、PCB、工业富联链同步放量才继续拿；不确认不补仓。",
-      "江丰电子约17%仍是半导体材料风险仓，若材料链不能放量反包，继续降到10%以内。",
-      "巨化股份约17%是新切入周期/制冷剂方向，必须看制冷剂、氟化工和资源周期是否同步承接。",
-      "欣锐科技约10%是高压快充验证仓，和富特同方向，不允许越跌越补。"
+      "巨化股份约32%为周期/制冷剂主仓，继续看制冷剂价格、氟化工景气和利润兑现。",
+      "浪潮信息约29%为AI服务器业绩兑现仓，已有中报预告硬数据，重点看高位承接和产业链共振。",
+      "富特科技约22%为高压快充成长仓，持有看订单、毛利率和现金流，不盲目加。",
+      "江丰电子约16%为半导体材料修复仓，若材料链不能放量反包，继续控风险。",
+      "欣锐科技已清仓，只保留历史跟踪，不再按当前持仓给仓位建议。"
     ],
     holdingImpacts: [
       { name: "富特科技", impact: "新能源车高压电源/800V快充仍有相对强度，但仓位集中。", action: "持有不加仓，冲高滞涨或补跌先降仓。", trigger: "站稳短线趋势且新能源车链回流。", fail: "跌破短线支撑或放量补跌。" },
       { name: "浪潮信息", impact: "AI服务器/国产算力方向今天较强，是调仓里最成功的一笔。", action: "按验证仓持有，不确认不补。", trigger: "AI服务器、PCB、国产算力同步放量。", fail: "板块强它弱或跌破买入区。" },
       { name: "江丰电子", impact: "半导体材料仍受海外半导体和韩国存储情绪影响。", action: "不能反包就继续降风险。", trigger: "韩国/日经半导体止跌，A股材料链放量反包。", fail: "弱反弹无量或再创新低。" },
       { name: "巨化股份", impact: "新增周期/制冷剂方向，能降低组合科技单一暴露。", action: "先按验证仓观察，不确认不加。", trigger: "制冷剂、氟化工和资源周期同步放量。", fail: "板块不配合且跌破买入区。" },
-      { name: "欣锐科技", impact: "与富特同属高压快充/车载电源映射，用于验证富特是否板块共振。", action: "小仓验证，不越跌越补。", trigger: "高压快充和新能源车零部件回流。", fail: "富特强但欣锐持续弱，说明不是板块共振。" }
+      { name: "欣锐科技", impact: "已清仓历史跟踪；可作为高压快充/车载电源方向参照。", action: "不按当前持仓处理，只观察方向验证。", trigger: "高压快充和新能源车零部件回流。", fail: "方向不共振则继续移出重点。" }
     ],
     candidateAdjustments: [],
     newsTasks: [
@@ -3207,6 +3304,12 @@ async function buildModelAnalysis(dashboard, session) {
 async function main() {
   const previous = await readPreviousDashboard();
   const session = updateSession();
+  const scheduleGate = shouldRunScheduledUpdate(previous, session);
+  if (!scheduleGate.ok) {
+    console.log(scheduleGate.reason);
+    return;
+  }
+  console.log(`dashboard update started: ${session.name}; trigger=${process.env.GITHUB_EVENT_NAME || "local"}; reason=${scheduleGate.reason}`);
   const previousHoldings = previous.portfolio?.holdings || [];
   const previousIndices = previous.market?.indices || [];
   const previousCandidates = previous.candidates || [];
@@ -3216,14 +3319,19 @@ async function main() {
   ]));
   const stockQuotes = await fetchSina(STOCKS.map(x => x[0])).catch(error => {
     console.warn(`stock quote fallback: ${error.message}`);
-    return previousHoldings.map(h => ({
-      name: h.name,
-      prevClose: Number(h.close) / (1 + Number(h.pct || 0) / 100),
-      close: Number(h.close),
-      high: Number(h.high ?? h.close),
-      low: Number(h.low ?? h.close),
-      amountRaw: Number(String(h.amount || "0").replace("亿", "")) * 100000000
-    })).filter(q => Number.isFinite(q.close));
+    const previousByCode = new Map(previousHoldings.map(h => [h.code, h]));
+    return STOCKS.map(([, name, code]) => {
+      const h = previousByCode.get(code) || {};
+      const close = Number(h.close);
+      return {
+        name,
+        prevClose: Number.isFinite(close) ? close / (1 + Number(h.pct || 0) / 100) : 0,
+        close,
+        high: Number(h.high ?? close),
+        low: Number(h.low ?? close),
+        amountRaw: Number(String(h.amount || "0").replace("亿", "")) * 100000000
+      };
+    }).filter(q => Number.isFinite(q.close) && q.close > 0);
   });
   const trackingQuotes = await fetchSina(trackingSymbols).catch(error => {
     console.warn(`tracking quote fallback: ${error.message}`);
@@ -3236,6 +3344,10 @@ async function main() {
       prevClose: Number(i.close) / (1 + Number(i.pct || 0) / 100),
       close: Number(i.close)
     })).filter(q => Number.isFinite(q.close));
+  });
+  const indexWeeklyProfiles = await fetchWeeklyProfiles(INDICES.map(x => [x[0], x[1], x[0].replace(/^(sh|sz)/, "")])).catch(error => {
+    console.warn(`index weekly trend fallback: ${error.message}`);
+    return new Map();
   });
   const candidateQuotes = await fetchSina(CANDIDATE_POOL.map(x => x[0])).catch(error => {
     console.warn(`candidate quote fallback: ${error.message}`);
@@ -3316,11 +3428,16 @@ async function main() {
   });
   const quoteMap = new Map(trackingQuotes.map(q => [q.name, q]));
 
-  const indices = indexQuotes.map((q, idx) => ({
-    name: INDICES[idx][1],
-    close: Number(q.close.toFixed(2)),
-    pct: pct(q.close, q.prevClose)
-  }));
+  const indices = indexQuotes.map((q, idx) => {
+    const dayPct = pct(q.close, q.prevClose);
+    const trend = buildIndexTrendProfile(indexWeeklyProfiles.get(INDICES[idx][0].replace(/^(sh|sz)/, "")), dayPct);
+    return {
+      name: INDICES[idx][1],
+      close: Number(q.close.toFixed(2)),
+      pct: dayPct,
+      trend
+    };
+  });
 
   const hasPreviousFullMarketCandidates = /全A快照/.test(previous.meta?.candidateScanScope || "")
     && Array.isArray(previous.candidates)
@@ -3417,7 +3534,7 @@ async function main() {
     },
     portfolio: {
       totalValue: "",
-      positionRatio: "84.44%",
+      positionRatio: "99.41%",
       profit: "",
       stance: indices.some(x => x.pct < -3) ? "防守" : "观察",
       privacyNote: "按用户要求，网页不展示账户金额，只展示仓位比例、收益百分比和交易状态。",

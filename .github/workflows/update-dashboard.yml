@@ -5,6 +5,9 @@ on:
     branches:
       - main
   schedule:
+    # Heartbeat mode. GitHub sometimes misses exact fixed-time schedules, so the
+    # script decides whether this heartbeat should produce the morning, midday,
+    # after-close, or weekend update in China time.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
