@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.6";
-const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.6";
+const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.5";
+const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.5";
+const REQUIRE_MODEL_ANALYSIS = (process.env.REQUIRE_MODEL_ANALYSIS || "true") !== "false";
 const TUSHARE_TOKEN = process.env.TUSHARE_TOKEN || "";
 
 const STOCKS = [
@@ -3296,7 +3297,11 @@ async function buildModelAnalysis(dashboard, session) {
     try {
       return await callModel(180000, "深度重试");
     } catch (retryError) {
-      return fallbackModelAnalysis(session, `模型分析调用失败：${error.message}；重试失败：${retryError.message}。本次降级为规则版。`);
+      const message = `模型分析调用失败：${error.message}；重试失败：${retryError.message}`;
+      if (REQUIRE_MODEL_ANALYSIS) {
+        throw new Error(`${message}。已按要求禁止降级，终止本次更新，避免规则版覆盖真实分析。`);
+      }
+      return fallbackModelAnalysis(session, `${message}。本次降级为规则版。`);
     }
   }
 }
