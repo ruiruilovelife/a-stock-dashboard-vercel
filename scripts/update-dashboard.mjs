@@ -299,6 +299,361 @@ const CANDIDATE_POOL = [
   ["sh603833", "欧派家居", "603833", "家居消费", "地产后周期、家居消费", "订单和渠道库存"]
 ];
 
+const FUTURE_GROWTH_UNIVERSE = [
+  {
+    symbol: "sz000977",
+    name: "浪潮信息",
+    code: "000977",
+    industry: "AI算力基础设施",
+    tier: "S",
+    chain: "AI服务器/国产算力",
+    moatLevel: 4,
+    moat: "国内AI服务器核心厂商，客户和交付能力是主要壁垒。",
+    currentMcapYi: 1260,
+    targetMcapYi: 3000,
+    financial: { revenue: 5, profit: 5, nonGaap: 5, margin: 4, roe: 3, inflection: true },
+    growthWhy: "AI服务器需求、国产算力采购和云厂商资本开支可能共同抬升收入与利润弹性。",
+    mispricing: "市场容易只看服务器硬件低毛利，低估AI服务器结构升级和供应链确定性。",
+    catalysts: ["中报/年报订单兑现", "国产算力政策采购", "海外AI资本开支继续上修"],
+    risks: ["毛利率被竞争压缩", "交付节奏不及预期", "高市值导致弹性不如二线标的"],
+    valuationDiscount: false,
+    attention: "高"
+  },
+  {
+    symbol: "sz300476",
+    name: "胜宏科技",
+    code: "300476",
+    industry: "AI算力基础设施",
+    tier: "S",
+    chain: "AI服务器PCB",
+    moatLevel: 3,
+    moat: "高多层PCB产能和客户验证形成先发优势。",
+    currentMcapYi: 520,
+    targetMcapYi: 1800,
+    financial: { revenue: 4, profit: 5, nonGaap: 4, margin: 4, roe: 3, inflection: true },
+    growthWhy: "AI服务器PCB价值量提升，高端板供需紧张有望带来收入和毛利率双升。",
+    mispricing: "市场常把PCB当周期制造，低估AI服务器板升级带来的ASP和客户结构变化。",
+    catalysts: ["AI服务器订单放量", "高端PCB产能释放", "海外算力链映射"],
+    risks: ["涨幅过快后的估值透支", "客户集中", "高端产能爬坡不及预期"],
+    valuationDiscount: false,
+    attention: "中高"
+  },
+  {
+    symbol: "sz002916",
+    name: "深南电路",
+    code: "002916",
+    industry: "AI算力基础设施",
+    tier: "S",
+    chain: "PCB/封装基板",
+    moatLevel: 4,
+    moat: "通信PCB、服务器PCB和封装基板综合能力较强。",
+    currentMcapYi: 680,
+    targetMcapYi: 1900,
+    financial: { revenue: 4, profit: 4, nonGaap: 4, margin: 3, roe: 4, inflection: true },
+    growthWhy: "AI服务器、交换机和封装基板需求共振，利润弹性来自产品结构改善。",
+    mispricing: "市场对公司稳健属性定价较多，对AI硬件多环节弹性定价不足。",
+    catalysts: ["AI服务器PCB订单", "封装基板稼动率修复", "通信设备需求回升"],
+    risks: ["大市值弹性受限", "封装基板周期修复慢", "价格竞争"],
+    valuationDiscount: false,
+    attention: "中"
+  },
+  {
+    symbol: "sz002837",
+    name: "英维克",
+    code: "002837",
+    industry: "AI算力基础设施",
+    tier: "S",
+    chain: "液冷/数据中心温控",
+    moatLevel: 4,
+    moat: "数据中心温控和储能温控客户基础较好，液冷验证壁垒较高。",
+    currentMcapYi: 360,
+    targetMcapYi: 1300,
+    financial: { revenue: 4, profit: 4, nonGaap: 4, margin: 4, roe: 4, inflection: true },
+    growthWhy: "AI数据中心功耗提升推动液冷渗透率上行，公司有望从温控设备升级中受益。",
+    mispricing: "市场容易把温控当普通设备，低估液冷从可选项变成刚需后的估值重估。",
+    catalysts: ["液冷订单", "储能温控恢复", "云厂商资本开支上行"],
+    risks: ["液冷渗透速度慢", "竞争加剧", "项目制收入波动"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz300666",
+    name: "江丰电子",
+    code: "300666",
+    industry: "半导体材料",
+    tier: "S",
+    chain: "靶材/先进制程材料",
+    moatLevel: 4,
+    moat: "国内高纯溅射靶材龙头之一，晶圆厂认证周期形成客户壁垒。",
+    currentMcapYi: 260,
+    targetMcapYi: 950,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 3, roe: 3, inflection: true },
+    growthWhy: "先进制程、存储和国产替代带来靶材需求，公司若订单修复会出现利润弹性。",
+    mispricing: "市场阶段性只看半导体材料回调，忽视认证通过后的长期替代价值。",
+    catalysts: ["晶圆厂验证进展", "韩国存储周期修复", "国产替代订单"],
+    risks: ["材料板块估值压缩", "客户导入慢", "利润率波动"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz300054",
+    name: "鼎龙股份",
+    code: "300054",
+    industry: "半导体材料",
+    tier: "S",
+    chain: "CMP材料/显示材料",
+    moatLevel: 3,
+    moat: "CMP抛光垫和相关材料具备国产替代稀缺性。",
+    currentMcapYi: 250,
+    targetMcapYi: 1000,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 4, roe: 3, inflection: true },
+    growthWhy: "半导体材料国产替代和CMP材料放量可推动利润拐点。",
+    mispricing: "市场对短期材料链波动反应过度，低估长期客户验证和产品平台化。",
+    catalysts: ["CMP材料放量", "晶圆厂订单改善", "利润率修复"],
+    risks: ["需求恢复慢", "新产品放量不及预期", "板块风险偏好下降"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz300346",
+    name: "南大光电",
+    code: "300346",
+    industry: "半导体材料",
+    tier: "S",
+    chain: "光刻胶/电子特气",
+    moatLevel: 3,
+    moat: "光刻胶和电子特气均有国产替代价值，技术验证周期较长。",
+    currentMcapYi: 190,
+    targetMcapYi: 780,
+    financial: { revenue: 3, profit: 3, nonGaap: 3, margin: 3, roe: 3, inflection: true },
+    growthWhy: "国产光刻胶和电子特气如果客户验证提速，收入增速与估值都可能上修。",
+    mispricing: "市场对材料验证进度缺乏耐心，容易忽视小体量产品放量的利润弹性。",
+    catalysts: ["光刻胶验证", "电子特气订单", "国产晶圆厂扩产"],
+    risks: ["验证周期长", "研发投入拖累利润", "主题热度回落"],
+    valuationDiscount: true,
+    attention: "中低"
+  },
+  {
+    symbol: "sz002472",
+    name: "双环传动",
+    code: "002472",
+    industry: "人形机器人",
+    tier: "S",
+    chain: "减速器/精密传动",
+    moatLevel: 4,
+    moat: "精密齿轮和减速器制造能力强，汽车客户基础可迁移到机器人。",
+    currentMcapYi: 260,
+    targetMcapYi: 1000,
+    financial: { revenue: 4, profit: 4, nonGaap: 4, margin: 3, roe: 4, inflection: true },
+    growthWhy: "机器人执行器若进入量产周期，传动部件价值量和估值体系都可能上移。",
+    mispricing: "市场把它当汽零周期股定价，未充分定价机器人第二成长曲线。",
+    catalysts: ["机器人客户定点", "减速器订单", "汽车齿轮出口增长"],
+    risks: ["机器人量产时间慢", "汽零价格竞争", "估值先于业绩透支"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sh603662",
+    name: "柯力传感",
+    code: "603662",
+    industry: "人形机器人",
+    tier: "S",
+    chain: "传感器/力控",
+    moatLevel: 3,
+    moat: "力传感器制造经验和客户基础可向机器人感知拓展。",
+    currentMcapYi: 120,
+    targetMcapYi: 560,
+    financial: { revenue: 3, profit: 3, nonGaap: 3, margin: 3, roe: 3, inflection: true },
+    growthWhy: "机器人力控传感器若需求爆发，小市值公司具备较高弹性。",
+    mispricing: "市场对机器人传感器从工业称重向人形机器人的迁移路径仍有分歧。",
+    catalysts: ["机器人传感器样品/订单", "工业传感恢复", "政策和产业事件催化"],
+    risks: ["订单验证不足", "概念波动大", "技术路线变化"],
+    valuationDiscount: true,
+    attention: "中低"
+  },
+  {
+    symbol: "sz002747",
+    name: "埃斯顿",
+    code: "002747",
+    industry: "工业自动化",
+    tier: "S",
+    chain: "机器人本体/控制",
+    moatLevel: 4,
+    moat: "国产工业机器人和运动控制核心企业，渠道与产品平台较完整。",
+    currentMcapYi: 210,
+    targetMcapYi: 800,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 3, roe: 2, inflection: true },
+    growthWhy: "国产替代和制造业自动化恢复可推动收入回升，利润弹性来自费用率和规模效应。",
+    mispricing: "市场担心自动化周期低迷，可能低估国产份额提升和机器人平台价值。",
+    catalysts: ["工业自动化订单恢复", "机器人国产替代", "利润率改善"],
+    risks: ["制造业景气不足", "价格竞争", "海外资产整合压力"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz001696",
+    name: "宗申动力",
+    code: "001696",
+    industry: "低空经济",
+    tier: "S",
+    chain: "航空动力/通航发动机",
+    moatLevel: 3,
+    moat: "小型动力系统和通航动力具备产业卡位。",
+    currentMcapYi: 230,
+    targetMcapYi: 850,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 3, roe: 3, inflection: true },
+    growthWhy: "低空经济从政策走向订单时，动力系统是稀缺环节之一。",
+    mispricing: "市场容易把低空经济当短主题，忽视订单落地后的产业链重估。",
+    catalysts: ["低空政策落地", "航空动力订单", "通航应用场景扩张"],
+    risks: ["政策落地慢", "短线主题拥挤", "低空商业模式验证不足"],
+    valuationDiscount: false,
+    attention: "中高"
+  },
+  {
+    symbol: "sz000099",
+    name: "中信海直",
+    code: "000099",
+    industry: "低空经济",
+    tier: "A",
+    chain: "低空运营/通航服务",
+    moatLevel: 3,
+    moat: "通航运营经验和牌照资源构成先发优势。",
+    currentMcapYi: 150,
+    targetMcapYi: 520,
+    financial: { revenue: 3, profit: 3, nonGaap: 3, margin: 2, roe: 2, inflection: true },
+    growthWhy: "低空运营场景扩张会带来业务量提升和估值体系变化。",
+    mispricing: "市场对运营型公司能否兑现利润仍有怀疑，预期差来自真实订单和利用率。",
+    catalysts: ["低空示范城市订单", "飞行服务量提升", "政策细则"],
+    risks: ["主题炒作回落", "盈利弹性不及设备链", "监管节奏慢"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz301607",
+    name: "富特科技",
+    code: "301607",
+    industry: "新能源汽车核心零部件",
+    tier: "A",
+    chain: "高压电源/800V快充",
+    moatLevel: 3,
+    moat: "车载高压电源和客户验证形成一定壁垒。",
+    currentMcapYi: 120,
+    targetMcapYi: 600,
+    financial: { revenue: 4, profit: 4, nonGaap: 4, margin: 3, roe: 3, inflection: true },
+    growthWhy: "800V高压平台渗透提升，车载电源价值量和客户放量可能带来利润弹性。",
+    mispricing: "市场可能只按普通汽零定价，低估高压电源平台化和客户结构改善。",
+    catalysts: ["新客户定点", "800V平台放量", "毛利率改善"],
+    risks: ["新能源车价格战", "客户集中", "涨幅后波动放大"],
+    valuationDiscount: true,
+    attention: "中"
+  },
+  {
+    symbol: "sz300745",
+    name: "欣锐科技",
+    code: "300745",
+    industry: "新能源汽车核心零部件",
+    tier: "A",
+    chain: "车载电源/高压快充",
+    moatLevel: 2,
+    moat: "车载电源产品具备客户基础，但竞争格局仍需验证。",
+    currentMcapYi: 80,
+    targetMcapYi: 420,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 3, roe: 2, inflection: true },
+    growthWhy: "小市值叠加高压快充渗透，如果亏损收窄或盈利拐点确认，弹性较高。",
+    mispricing: "市场因历史波动和亏损压力给低估值，关键在于毛利率和订单质量能否改善。",
+    catalysts: ["盈利拐点", "高压电源订单", "客户结构改善"],
+    risks: ["亏损扩大", "价格战", "订单兑现不稳定"],
+    valuationDiscount: true,
+    attention: "低"
+  },
+  {
+    symbol: "sz300253",
+    name: "卫宁健康",
+    code: "300253",
+    industry: "医疗AI",
+    tier: "A",
+    chain: "医疗IT/AI医疗应用",
+    moatLevel: 3,
+    moat: "医疗IT客户基础和行业数据场景构成应用壁垒。",
+    currentMcapYi: 170,
+    targetMcapYi: 650,
+    financial: { revenue: 3, profit: 4, nonGaap: 3, margin: 3, roe: 2, inflection: true },
+    growthWhy: "医疗信息化和AI医疗应用若进入预算恢复周期，软件利润弹性较强。",
+    mispricing: "市场对医疗IT预算和AI变现信心不足，预期差来自订单恢复与利润率改善。",
+    catalysts: ["医疗IT订单恢复", "AI产品商业化", "费用率改善"],
+    risks: ["医院预算慢", "AI商业化不及预期", "应收账款压力"],
+    valuationDiscount: true,
+    attention: "中低"
+  },
+  {
+    symbol: "sh600160",
+    name: "巨化股份",
+    code: "600160",
+    industry: "高端制造",
+    tier: "A",
+    chain: "制冷剂/氟化工",
+    moatLevel: 4,
+    moat: "制冷剂配额和氟化工一体化能力形成周期壁垒。",
+    currentMcapYi: 600,
+    targetMcapYi: 1500,
+    financial: { revenue: 4, profit: 5, nonGaap: 5, margin: 4, roe: 4, inflection: true },
+    growthWhy: "制冷剂景气和价格周期若持续，利润弹性与现金流会显著改善。",
+    mispricing: "市场可能按普通化工周期股定价，低估配额约束下的利润持续性。",
+    catalysts: ["业绩预告超预期", "制冷剂价格维持高位", "氟化工新材料放量"],
+    risks: ["产品价格回落", "周期股估值天花板", "海外需求波动"],
+    valuationDiscount: false,
+    attention: "中高"
+  }
+];
+
+const INDUSTRY_CHAIN_MAP = [
+  {
+    chain: "AI算力基础设施",
+    nodes: [
+      { node: "GPU/ASIC", stocks: ["浪潮信息", "海光信息", "寒武纪(风向)"], read: "海外AI资本开支和国产算力政策决定风险偏好。" },
+      { node: "服务器", stocks: ["浪潮信息", "中科曙光"], read: "看订单、交付、毛利率和客户结构。" },
+      { node: "交换机/光模块", stocks: ["中际旭创", "新易盛", "天孚通信"], read: "海外云厂商CAPEX和高速产品占比是核心。" },
+      { node: "PCB/封装基板", stocks: ["胜宏科技", "深南电路", "沪电股份"], read: "高端PCB供需紧张和产品结构升级决定弹性。" },
+      { node: "液冷/温控", stocks: ["英维克", "申菱环境"], read: "液冷渗透率从可选到刚需时估值体系会变化。" },
+      { node: "电源/电力", stocks: ["麦格米特", "奥海科技"], read: "服务器电源和数据中心电力配套是二线弹性方向。" }
+    ]
+  },
+  {
+    chain: "半导体国产替代",
+    nodes: [
+      { node: "设备", stocks: ["北方华创", "拓荆科技", "华海清科", "中科飞测"], read: "看晶圆厂资本开支和国产份额提升。" },
+      { node: "材料", stocks: ["江丰电子", "鼎龙股份", "南大光电", "菲利华"], read: "看客户认证、订单放量和毛利率。" },
+      { node: "先进封装", stocks: ["通富微电", "长电科技", "华海诚科"], read: "HBM/Chiplet/先进封装景气决定弹性。" },
+      { node: "存储链", stocks: ["雅克科技", "江丰电子"], read: "韩国存储周期和国内替代订单是先验信号。" }
+    ]
+  },
+  {
+    chain: "人形机器人/工业自动化",
+    nodes: [
+      { node: "减速器/传动", stocks: ["双环传动", "绿的谐波"], read: "量产节点比单日涨跌更重要。" },
+      { node: "丝杠/轴承", stocks: ["贝斯特", "五洲新春"], read: "验证进度和客户定点决定是否从主题变业绩。" },
+      { node: "传感器", stocks: ["柯力传感"], read: "力控和感知环节有小市值弹性。" },
+      { node: "控制/本体", stocks: ["埃斯顿", "机器人"], read: "工业自动化周期恢复和国产替代共振。" }
+    ]
+  },
+  {
+    chain: "低空经济",
+    nodes: [
+      { node: "动力/零部件", stocks: ["宗申动力"], read: "看订单和适航/应用场景落地。" },
+      { node: "运营/空管", stocks: ["中信海直", "莱斯信息"], read: "政策细则和示范城市订单是关键。" },
+      { node: "复材/结构", stocks: ["光威复材", "中复神鹰"], read: "低空对复材是长期加分项，但不能替代军工/民品主业。" }
+    ]
+  },
+  {
+    chain: "新能源汽车新技术",
+    nodes: [
+      { node: "高压快充/车载电源", stocks: ["富特科技", "欣锐科技", "威迈斯"], read: "800V渗透和客户结构改善决定弹性。" },
+      { node: "热管理", stocks: ["三花智控", "银轮股份"], read: "新能源热管理和数据中心液冷可形成双逻辑。" },
+      { node: "智能底盘", stocks: ["科博达", "拓普集团"], read: "看平台客户和单车价值量提升。" }
+    ]
+  }
+];
+
 const OVERSOLD_VALUE_POOL = [
   ["sh600048", "保利发展", "600048", "地产龙头", "地产政策、央企地产、估值修复", "销售恢复、融资政策、资产负债表安全", { pe: 8, pb: 0.5, roe: 6, dividend: 4.5, profitGrowth: -20, cashQuality: 0.7, size: "large" }],
   ["sz002271", "东方雨虹", "002271", "消费建材", "地产链修复、基建、防水龙头", "地产需求、应收改善、利润率修复", { pe: 18, pb: 1.3, roe: 7, dividend: 2, profitGrowth: -15, cashQuality: 0.7, size: "mid" }],
@@ -2050,6 +2405,7 @@ function buildRollingResearchPool(previous, key, dailyItems, quoteRows, options 
   const scoreField = options.scoreField || "score";
   const statusPrefix = options.statusPrefix || "今日入选";
   const excludeCodes = new Set(options.excludeCodes || []);
+  const dropBelowMin = Boolean(options.dropBelowMin);
   const previousTracked = Array.isArray(previous[key]) ? previous[key] : [];
   const dailyByCode = new Map((dailyItems || []).filter(x => x?.code).map(x => [x.code, x]));
   const quoteByCode = new Map((quoteRows || []).filter(x => x?.code).map(x => [x.code, x]));
@@ -2062,6 +2418,7 @@ function buildRollingResearchPool(previous, key, dailyItems, quoteRows, options 
     const score = Number(item[scoreField] ?? item.score);
     const last = item.lastSelectedDate || item.firstTrackedDate || today;
     const stillFresh = daysBetween(last, today) <= 30;
+    if (dropBelowMin && !dailyByCode.has(item.code) && (!Number.isFinite(score) || score < minScore)) continue;
     if (stillFresh || dailyByCode.has(item.code)) {
       trackedByCode.set(item.code, {
         ...item,
@@ -2141,8 +2498,181 @@ function mergeResearchItems(items) {
   return Array.from(byCode.values());
 }
 
+function industryTrendScore(tier) {
+  if (tier === "S") return 30;
+  if (tier === "A") return 24;
+  if (tier === "B") return 16;
+  return 10;
+}
+
+function companyMoatScore(level) {
+  const table = { 5: 20, 4: 16, 3: 12, 2: 8, 1: 4 };
+  return table[Number(level)] ?? 6;
+}
+
+function financialGrowthScore(financial = {}) {
+  const revenue = Number(financial.revenue || 0);
+  const profit = Number(financial.profit || 0);
+  const nonGaap = Number(financial.nonGaap || 0);
+  const margin = Number(financial.margin || 0);
+  const roe = Number(financial.roe || 0);
+  const inflection = financial.inflection ? 3 : 0;
+  return Number(Math.min(25, revenue * 1.6 + profit * 2.1 + nonGaap * 1.4 + margin * 1.2 + roe * 0.7 + inflection).toFixed(1));
+}
+
+function valuationPotentialScore(currentMcapYi, targetMcapYi) {
+  const current = Number(currentMcapYi);
+  const target = Number(targetMcapYi);
+  if (!Number.isFinite(current) || !Number.isFinite(target) || current <= 0) return 2;
+  const multiple = target / current;
+  if (multiple >= 5) return 15;
+  if (multiple >= 4) return 13.5;
+  if (multiple >= 3) return 12;
+  if (multiple >= 2) return 8;
+  if (multiple >= 1.5) return 5;
+  return 2;
+}
+
+function technicalFundsScore(item, marketRow, dailyCandidate) {
+  let score = 5;
+  const dayPct = Number(marketRow?.dayPct ?? dailyCandidate?.dayPct);
+  const amountYi = Number(marketRow?.amountRaw) / 100000000;
+  const turnover = Number(marketRow?.turnover);
+  const climbScore = Number(dailyCandidate?.climbScore ?? dailyCandidate?.score);
+  if (Number.isFinite(dayPct) && dayPct > 0) score += 1;
+  if (Number.isFinite(dayPct) && dayPct > 5) score += 0.5;
+  if (Number.isFinite(amountYi) && amountYi >= 3) score += 1;
+  if (Number.isFinite(turnover) && turnover >= 0.8 && turnover <= 10) score += 1;
+  if (Number.isFinite(climbScore) && climbScore >= 7) score += 1.5;
+  if (item.attention === "高") score -= 0.8;
+  if (item.attention === "中高") score -= 0.3;
+  return Number(Math.max(0, Math.min(10, score)).toFixed(1));
+}
+
+function currentMarketCapForGrowth(item, marketRow, dailyCandidate) {
+  const values = [marketRow?.marketCapYi, dailyCandidate?.marketCapYi, item.currentMcapYi];
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return Number(n.toFixed(1));
+  }
+  return null;
+}
+
+function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = []) {
+  const marketByCode = new Map((marketWideSnapshot || []).map(row => [row.code, row]));
+  const dailyByCode = new Map((dailyCandidates || []).map(item => [item.code, item]));
+  const all = FUTURE_GROWTH_UNIVERSE.map(item => {
+    const marketRow = marketByCode.get(item.code);
+    const daily = dailyByCode.get(item.code);
+    const marketCapYi = currentMarketCapForGrowth(item, marketRow, daily);
+    const targetMcapYi = Number(item.targetMcapYi);
+    const upsideMultiple = marketCapYi && targetMcapYi ? Number((targetMcapYi / marketCapYi).toFixed(1)) : null;
+    const industryScore = industryTrendScore(item.tier);
+    const moatScore = companyMoatScore(item.moatLevel);
+    const growthScore = financialGrowthScore(item.financial);
+    const valuationScore = valuationPotentialScore(marketCapYi, targetMcapYi);
+    const techScore = technicalFundsScore(item, marketRow, daily);
+    const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
+    const performanceImproving = Boolean(item.financial?.inflection) && Number(item.financial?.profit || 0) >= 3;
+    const futureProfit5xPotential = Boolean(upsideMultiple && upsideMultiple >= 3) && Number(item.financial?.profit || 0) >= 4;
+    const lowAttention = item.attention === "低" || item.attention === "中低" || item.attention === "中";
+    const isBuyable = isBuyableAShareCode(item.code);
+    const phase = totalScore >= 90
+      ? "未来赢家重点池"
+      : totalScore >= 85
+        ? "五倍潜力候选"
+        : totalScore >= 78
+          ? "产业研究观察"
+          : "未达入池";
+    const why = [
+      `产业：${item.tier}级${item.industry}，${item.chain}`,
+      `竞争力：${item.moat}`,
+      `财务：${item.financial?.inflection ? "利润/毛利率拐点待验证或已出现" : "仍需等待财务拐点"}`,
+      `估值空间：当前约${marketCapYi ?? item.currentMcapYi}亿，研究假设目标约${targetMcapYi}亿，空间约${upsideMultiple ?? "-"}倍`
+    ].join("；");
+    return {
+      ...item,
+      buyable: isBuyable,
+      marketCapYi,
+      targetMcapYi,
+      upsideMultiple,
+      pe: marketRow?.pe ?? daily?.pe ?? "待接入",
+      peTtm: marketRow?.peTtm ?? daily?.peTtm ?? "待接入",
+      pb: marketRow?.pb ?? daily?.pb ?? "待接入",
+      ps: "待接入",
+      dayPct: marketRow?.dayPct ?? daily?.dayPct ?? null,
+      close: marketRow?.close ?? daily?.close ?? null,
+      amount: marketRow?.amountRaw ? amountText(marketRow.amountRaw) : daily?.amount || "-",
+      turnover: marketRow?.turnover ?? daily?.turnover ?? null,
+      industryTrendScore: industryScore,
+      companyMoatScore: moatScore,
+      financialGrowthScore: growthScore,
+      valuationPotentialScore: valuationScore,
+      technicalFundsScore: techScore,
+      totalScore,
+      fiveXPotentialIndex: totalScore,
+      fiveXScore: Number((totalScore / 10).toFixed(1)),
+      score: Number((totalScore / 10).toFixed(1)),
+      theme: item.industry,
+      phase,
+      performanceImproving,
+      futureProfit5xPotential,
+      lowAttention,
+      coreLogic: why,
+      futureCatalysts: item.catalysts.join("；"),
+      risk: item.risks.join("；"),
+      targetMcap: `${targetMcapYi}亿`,
+      fiveXRead: totalScore >= 85
+        ? "产业趋势、竞争力、财务拐点和未来空间同时达标；技术资金只作为买点确认。"
+        : "产业逻辑可研究，但综合分未达85，暂不进入未来5倍正式候选。",
+      investmentLogicCard: {
+        company: item.name,
+        industryPosition: `${item.industry} / ${item.chain}`,
+        whyFutureGrowth: item.growthWhy,
+        marketMispricing: item.mispricing,
+        futureCatalysts: item.catalysts,
+        maxRisk: item.risks[0] || "财务兑现不及预期"
+      }
+    };
+  }).sort((a, b) => b.totalScore - a.totalScore || Number(b.upsideMultiple ?? 0) - Number(a.upsideMultiple ?? 0));
+
+  const futureFiveXCandidates = all
+    .filter(item => item.buyable)
+    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
+    .filter(item => item.tier === "S" || item.tier === "A")
+    .filter(item => item.totalScore > 85)
+    .filter(item => Number(item.upsideMultiple) >= 3)
+    .filter(item => item.performanceImproving)
+    .slice(0, 12);
+
+  const davisDoubleCandidates = all
+    .filter(item => item.buyable)
+    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
+    .filter(item => item.performanceImproving)
+    .filter(item => Number(item.financial?.profit || 0) >= 4)
+    .filter(item => Number(item.financial?.margin || 0) >= 3)
+    .filter(item => item.valuationDiscount || Number(item.valuationPotentialScore) >= 8)
+    .slice(0, 12);
+
+  return {
+    all,
+    futureFiveXCandidates,
+    davisDoubleCandidates,
+    industryChainMap: INDUSTRY_CHAIN_MAP
+  };
+}
+
 function isFiveXPoolEligible(item) {
   if (!item?.code || !isBuyableAShareCode(item.code)) return false;
+  if (item.fiveXPotentialIndex != null) {
+    const marketCap = Number(item.marketCapYi ?? item.currentMcapYi);
+    return marketCap >= 50
+      && marketCap <= 500
+      && (item.tier === "S" || item.tier === "A")
+      && Number(item.upsideMultiple) >= 3
+      && item.performanceImproving
+      && Number(item.fiveXPotentialIndex) >= 85;
+  }
   if (item.code === "002463") return false; // 沪电股份今年涨幅已过大，不再按早中期5倍候选处理。
   const yearReturn = Number(item.yearReturn);
   if (Number.isFinite(yearReturn) && yearReturn > 230) return false;
@@ -3289,9 +3819,23 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       }
     ],
     fiveXModel: {
-      title: "近5年A股一年5倍股模型",
-      conclusion: "一年5倍股很少靠单一K线产生，通常是低位或中低位技术结构先走出来，再叠加硬消息、产业周期、业绩爆发或流动性抱团。真正能早期跟踪的阶段，往往是涨幅30%-120%之间、周线趋势刚排队、成交额中枢抬升但还没天量高潮的时候。",
-      sampleNote: "样本为近5年代表性案例，用于提炼框架，不等同于完整名单；科创和北证样本可作风向研究，但不进入你的可买候选。",
+      title: "未来成长股发现系统",
+      conclusion: "这页不再把五倍股理解成短线暴涨预测，而是用产业研究框架寻找未来1-3年可能被市场重估的公司。核心顺序是：先判断产业5年空间，再判断公司竞争力和财务拐点，最后才用技术资金决定买点。技术形态好但产业、财务、估值空间不足，不进入正式候选。",
+      sampleNote: "历史一年5倍股样本只用于理解“产业/业绩/资金如何共振”，不作为直接选股公式；科创和北证继续作为产业风向研究，但不进入你的可买候选。",
+      scoringDimensions: [
+        { dimension: "产业趋势", weight: 30, read: "看未来5年市场空间、国家战略、国产替代程度和全球竞争格局；S级赛道给最高权重。" },
+        { dimension: "公司竞争力", weight: 20, read: "看全球/国内排名、技术壁垒、客户壁垒和国产替代价值；概念公司降权。" },
+        { dimension: "财务成长", weight: 25, read: "看三年收入CAGR、近四季度收入和利润增速、扣非利润、毛利率和ROE变化，重点找利润拐点。" },
+        { dimension: "估值潜力", weight: 15, read: "用当前市值、PE/PS和未来合理市值做空间模型，显示目标市值/当前市值倍数。" },
+        { dimension: "技术资金", weight: 10, read: "只判断上车时机：周线、成交额、换手和资金承接，不替代公司价值。" }
+      ],
+      futureCandidateRules: [
+        "当前市值小于1000亿，正式五倍潜力池优先50-500亿。",
+        "所属产业必须A级以上，S级优先：AI算力基础设施、半导体国产替代/材料/设备、人形机器人、工业自动化、低空经济、高端制造。",
+        "综合评分必须大于85分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
+        "必须能说清楚当前市场错误认知，不允许只写题材和K线。",
+        "每只股票必须给出目标市值假设、未来催化、最大风险和失败信号。"
+      ],
       samples: [
         {
           name: "九安医疗",
@@ -3576,6 +4120,42 @@ function compactDashboardForModel(dashboard) {
     styleAnchors: dashboard.macro?.styleAnchors || [],
     elasticAttackWatch: dashboard.macro?.elasticAttackWatch || [],
     fiveXModel: dashboard.macro?.fiveXModel || {},
+    futureFiveXCandidates: (dashboard.futureFiveXCandidates || []).map(x => ({
+      name: x.name,
+      code: x.code,
+      industry: x.industry,
+      chain: x.chain,
+      marketCapYi: x.marketCapYi,
+      targetMcapYi: x.targetMcapYi,
+      upsideMultiple: x.upsideMultiple,
+      fiveXPotentialIndex: x.fiveXPotentialIndex,
+      scores: {
+        industryTrend: x.industryTrendScore,
+        companyMoat: x.companyMoatScore,
+        financialGrowth: x.financialGrowthScore,
+        valuationPotential: x.valuationPotentialScore,
+        technicalFunds: x.technicalFundsScore
+      },
+      coreLogic: x.coreLogic,
+      futureCatalysts: x.futureCatalysts,
+      risk: x.risk,
+      investmentLogicCard: x.investmentLogicCard
+    })),
+    davisDoubleCandidates: (dashboard.davisDoubleCandidates || []).map(x => ({
+      name: x.name,
+      code: x.code,
+      industry: x.industry,
+      fiveXPotentialIndex: x.fiveXPotentialIndex,
+      marketCapYi: x.marketCapYi,
+      targetMcapYi: x.targetMcapYi,
+      upsideMultiple: x.upsideMultiple,
+      financialGrowthScore: x.financialGrowthScore,
+      valuationPotentialScore: x.valuationPotentialScore,
+      coreLogic: x.coreLogic,
+      futureCatalysts: x.futureCatalysts,
+      risk: x.risk
+    })),
+    industryChainMap: dashboard.industryChainMap || [],
     researchRadarTasks: dashboard.macro?.researchRadarTasks || [],
     holdingHardEvents: dashboard.macro?.holdingHardEvents || [],
     announcementCoverage: dashboard.macro?.announcementCoverage || [],
@@ -3713,8 +4293,8 @@ async function buildModelAnalysis(dashboard, session) {
 3. 对雪球只作为市场分歧/预期拥挤度参考；对同花顺只作为题材归因和板块联动参考；公告和交易所信息优先于社交讨论。
 4. 早盘版指导上午，午间版指导下午，盘后版指导明天，周末版指导下周。
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
-6. 候选股必须按“周K先筛、量能台阶、市值80-300亿优先、行业高景气、财务/公告边际改善”评价；日K只用于买点，不作为先选依据。
-7. 必须使用“近5年一年5倍股模型”辅助判断候选：低位/中低位周线爬坡、成交额中枢上移、硬催化、财报/订单/涨价兑现、板块资金共振。fiveXScore低于6.5的股票不要建议买入，只能普通观察。
+6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
+7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于85的股票不要建议买入，只能普通观察。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 必须单独评估超跌/低估股票：只有估值压缩、基本面未坏、行业有修复催化、技术止跌或资金回流同时出现，才可以观察；不能因为跌得多就建议买入，要警惕价值陷阱。
@@ -3964,14 +4544,13 @@ async function main() {
   const valueTrackingQuotes = marketWideSnapshot.length
     ? quoteRowsFromItems(marketWideSnapshot)
     : quoteRowsFromItems(oversoldValueIdeas);
-  const fiveXSourceItems = mergeResearchItems([
-    ...dailyCandidates,
-    ...(Array.isArray(previous.trackedCandidates) ? previous.trackedCandidates : []),
-    ...(Array.isArray(previous.trackedFiveXIdeas) ? previous.trackedFiveXIdeas : [])
-  ]);
-  const fiveXIdeas = fiveXSourceItems
+  const institutionalGrowth = buildInstitutionalGrowthResearch(marketWideSnapshot, dailyCandidates);
+  const futureFiveXCandidates = institutionalGrowth.futureFiveXCandidates;
+  const davisDoubleCandidates = institutionalGrowth.davisDoubleCandidates;
+  const industryChainMap = institutionalGrowth.industryChainMap;
+  const fiveXIdeas = futureFiveXCandidates
     .filter(isFiveXPoolEligible)
-    .sort((a, b) => Number(b.fiveXScore ?? -999) - Number(a.fiveXScore ?? -999) || Number(b.score ?? -999) - Number(a.score ?? -999))
+    .sort((a, b) => Number(b.fiveXPotentialIndex ?? -999) - Number(a.fiveXPotentialIndex ?? -999))
     .slice(0, 20);
   const trackedValueIdeas = buildRollingResearchPool(previous, "trackedValueIdeas", oversoldValueIdeas, valueTrackingQuotes, {
     minScore: 5,
@@ -3979,10 +4558,11 @@ async function main() {
     statusPrefix: "估值质量"
   });
   const trackedFiveXIdeas = buildRollingResearchPool(previous, "trackedFiveXIdeas", fiveXIdeas, candidateTrackingQuotes, {
-    minScore: 6.5,
-    scoreField: "fiveXScore",
+    minScore: 85,
+    scoreField: "fiveXPotentialIndex",
     statusPrefix: "5倍模型",
-    excludeCodes: ["002463"]
+    dropBelowMin: true,
+    excludeCodes: ["002463", "688019", "688106", "688120", "688041", "688981", "688800", "688017", "688535", "688409", "688295", "688631", "688596", "688072", "688361", "688506", "688266"]
   });
   const holdingHardEventResult = await fetchHoldingHardEvents(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas).catch(error => {
     console.warn(`holding hard events fallback: ${error.message}`);
@@ -4068,6 +4648,10 @@ async function main() {
     },
     candidates: dailyCandidates,
     fiveXCandidates: fiveXIdeas,
+    futureGrowthUniverse: institutionalGrowth.all,
+    futureFiveXCandidates,
+    industryChainMap,
+    davisDoubleCandidates,
     oversoldValueIdeas,
     trackedValueIdeas,
     trackedFiveXIdeas,

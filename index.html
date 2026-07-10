@@ -70,6 +70,20 @@
       font-size: 12px;
       margin: 2px;
     }
+    .subtabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .subtab {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #213547;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .subtab:hover { border-color: var(--blue); color: var(--blue); }
     .red { color: var(--red); }
     .green { color: var(--green); }
     .amber { color: var(--amber); }
@@ -694,43 +708,89 @@
         const traits = model.traits || [];
         const rules = model.rules || [];
         const dailyIntegration = model.dailyIntegration || [];
-        const fiveXCandidates = state.fiveXCandidates || state.candidates || [];
+        const scoringDimensions = model.scoringDimensions || [];
+        const futureRules = model.futureCandidateRules || [];
+        const fiveXCandidates = state.futureFiveXCandidates || state.fiveXCandidates || [];
+        const industryMap = state.industryChainMap || [];
+        const davisDouble = state.davisDoubleCandidates || [];
         const trackedFiveX = state.trackedFiveXIdeas || [];
         html = `
           <div class="card notice dense">
-            <h2>${model.title || "近5年A股一年5倍股模型"}</h2>
-            <p><b>核心结论：</b>${model.conclusion || "5倍股通常来自技术结构、硬催化、业绩或产业周期和资金共振，不是单一K线形态。"}</p>
+            <h2>${model.title || "未来成长股发现系统"}</h2>
+            <p><b>核心结论：</b>${model.conclusion || "先研究产业和公司，再用技术资金找买点。"}</p>
             <p><b>样本口径：</b>${model.sampleNote || "代表性样本用于提炼框架，不等于完整名单。"}</p>
+            <div class="subtabs">
+              <a class="subtab" href="#future-five-x">未来5倍候选池</a>
+              <a class="subtab" href="#industry-chain-map">产业链地图</a>
+              <a class="subtab" href="#davis-double">戴维斯双击</a>
+              <a class="subtab" href="#five-x-tracking">滚动跟踪池</a>
+              <a class="subtab" href="#five-x-samples">历史样本</a>
+            </div>
           </div>
           <div class="section card dense">
-            <h2>当前候选的5倍股相似度</h2>
-            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>爬坡分</th><th>5倍相似度</th><th>阶段</th><th>模型结论</th></tr></thead><tbody>
+            <h2>五维评分框架</h2>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>维度</th><th>权重</th><th>机构式判断口径</th></tr></thead><tbody>
+              ${scoringDimensions.map(x => `<tr><td><b>${x.dimension}</b></td><td>${x.weight}分</td><td>${x.read}</td></tr>`).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="section card dense" id="future-five-x">
+            <h2>子页面1：未来5倍候选池</h2>
+            <p class="muted">筛选硬条件：市值小于1000亿、产业A级以上、综合评分&gt;85、未来空间&gt;3倍、业绩或利润率有改善线索。这里不是预测明天涨跌，而是找未来产业赢家。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>五维评分</th><th>市值空间</th><th>核心逻辑</th><th>未来催化</th><th>最大风险</th></tr></thead><tbody>
               ${fiveXCandidates.map(c => `<tr>
                 <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
-                <td class="nowrap">${c.climbScore ?? "-"}/10</td>
-                <td class="nowrap"><b>${c.fiveXScore ?? "-"}/10</b></td>
-                <td>${c.phase || "-"}</td>
-                <td>${c.fiveXRead || "-"}</td>
+                <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
+                <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 估值${c.valuationPotentialScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
+                <td>当前约${c.marketCapYi ?? c.currentMcapYi ?? "-"}亿<br>目标约${c.targetMcapYi ?? "-"}亿<br><b>${c.upsideMultiple ?? "-"}倍空间</b></td>
+                <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}</td>
+                <td>${Array.isArray(c.investmentLogicCard?.futureCatalysts) ? c.investmentLogicCard.futureCatalysts.join("；") : c.futureCatalysts || "-"}</td>
+                <td>${c.investmentLogicCard?.maxRisk || c.risk || "-"}</td>
               </tr>`).join("")}
             </tbody></table></div>
           </div>
-          <div class="section card dense">
-            <h2>5倍股相似度 1个月滚动池（最多100只）</h2>
-            <p class="muted">只跟踪 5倍相似度不低于 6.5 的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
-            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>相似度/阶段</th><th>入选/更新</th><th>价格</th><th>涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
+          <div class="section dense" id="industry-chain-map">
+            <h2>子页面2：产业链地图</h2>
+            <div class="grid3">
+              ${industryMap.map(chain => card(chain.chain, `<table class="compact-table"><thead><tr><th>节点</th><th>对应股票</th><th>判断重点</th></tr></thead><tbody>${(chain.nodes || []).map(n => `<tr><td><b>${n.node}</b></td><td>${(n.stocks || []).join("、")}</td><td>${n.read || "-"}</td></tr>`).join("")}</tbody></table>`)).join("")}
+            </div>
+          </div>
+          <div class="section card dense" id="davis-double">
+            <h2>子页面3：戴维斯双击模型</h2>
+            <p class="muted">寻找“业绩增长 + 估值提升”的公司：利润改善、毛利率提升、行业景气向上、当前估值或关注度仍有预期差。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>行业</th><th>评分</th><th>双击逻辑</th><th>催化</th><th>风险</th></tr></thead><tbody>
+              ${davisDouble.map(c => `<tr>
+                <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
+                <td>${c.industry || "-"}<br><span class="muted">${c.chain || ""}</span></td>
+                <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">财务${c.financialGrowthScore ?? "-"} 估值${c.valuationPotentialScore ?? "-"}</span></td>
+                <td>${c.coreLogic || "-"}</td>
+                <td>${c.futureCatalysts || "-"}</td>
+                <td>${c.risk || "-"}</td>
+              </tr>`).join("")}
+            </tbody></table></div>
+          </div>
+          <div class="section card dense" id="five-x-tracking">
+            <h2>五倍潜力 1个月滚动池（最多100只）</h2>
+            <p class="muted">只跟踪五倍潜力指数不低于85分的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>指数/阶段</th><th>入选/更新</th><th>价格</th><th>涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
               ${trackedFiveX.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
-                <td><b>${t.fiveXScore ?? t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "-"}</span></td>
+                <td><b>${t.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">${t.phase || "-"}</span></td>
                 <td><span class="muted">首次</span> ${t.firstTrackedDate || "-"}<br><span class="muted">最近</span> ${t.lastSelectedDate || "-"}</td>
                 <td><span class="muted">入选</span> ${t.entryPrice ?? "-"}<br><span class="muted">现价</span> ${t.currentPrice ?? "-"}</td>
                 <td><span class="${pctClass(t.dayPct)}">今日 ${fmtPct(t.dayPct)}</span><br><span class="${pctClass(t.returnPct)}">累计 ${fmtPct(t.returnPct)}</span></td>
-                <td>${t.theme || "-"}</td>
+                <td>${t.industry || t.theme || "-"}</td>
                 <td>${t.status || "-"}</td>
               </tr>`).join("")}
             </tbody></table></div>
           </div>
-          <div class="section card">
-            <h2>代表样本：一年5倍级别股票怎么出现</h2>
+          <div class="section card dense">
+            <h2>正式入池规则</h2>
+            <table><thead><tr><th>规则</th><th>解释</th></tr></thead><tbody>
+              ${futureRules.map((x, i) => `<tr><td><b>${i + 1}</b></td><td>${x}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card" id="five-x-samples">
+            <h2>历史样本：一年5倍级别股票怎么出现</h2>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>年份</th><th>核心驱动</th><th>技术面</th><th>消息/基本面</th><th>给我的启发</th></tr></thead><tbody>
               ${samples.map(x => `<tr>
                 <td><b>${x.name}</b><br><span class="muted">${x.code}</span></td>
@@ -743,7 +803,7 @@
             </tbody></table></div>
           </div>
           <div class="section card">
-            <h2>共性拆解</h2>
+            <h2>历史共性拆解</h2>
             <table><thead><tr><th>维度</th><th>5倍股常见特征</th><th>每天怎么用</th></tr></thead><tbody>
               ${traits.map(x => `<tr><td><b>${x.dimension}</b></td><td>${x.rule}</td><td>${x.use}</td></tr>`).join("")}
             </tbody></table>
