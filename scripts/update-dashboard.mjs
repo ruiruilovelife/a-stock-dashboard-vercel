@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.4-mini";
-const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.6";
+const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.6-sol";
+const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.6-sol";
 const TUSHARE_TOKEN = process.env.TUSHARE_TOKEN || "";
 
 const STOCKS = [
