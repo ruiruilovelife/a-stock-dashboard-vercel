@@ -468,7 +468,16 @@ async function fetchCninfoAnnouncementsForStock(stock) {
   const code = stock.code || stock[2];
   const priority = stock.priority || "P2";
   const orgId = CNINFO_ORG_IDS[code] || TRACKED_EXTRA_CNINFO[code];
-  if (!orgId) return [];
+  if (!orgId) {
+    return {
+      stock: { symbol, name, code, priority },
+      orgId: "",
+      rawCount: null,
+      importantCount: 0,
+      announcements: [],
+      warning: "未配置巨潮 orgId，不能自动确认公告是否完整。"
+    };
+  }
   const params = new URLSearchParams({
     stock: `${code},${orgId}`,
     searchkey: "",
@@ -497,7 +506,8 @@ async function fetchCninfoAnnouncementsForStock(stock) {
   });
   if (!res.ok) throw new Error(`Cninfo ${code} failed: ${res.status}`);
   const json = await res.json();
-  return (json.announcements || [])
+  const allAnnouncements = json.announcements || [];
+  const announcements = allAnnouncements
     .filter(item => IMPORTANT_ANNOUNCEMENT_RE.test(item.announcementTitle || ""))
     .map(item => ({
       date: chinaDateFromMs(item.announcementTime),
@@ -515,6 +525,14 @@ async function fetchCninfoAnnouncementsForStock(stock) {
       trigger: "公告内容利好且板块同步放量、个股高开后承接强。",
       fail: "公告利好兑现但高开低走、放量长上影，或公告内容存在低基数/一次性/现金流质量问题。"
     }));
+  return {
+    stock: { symbol, name, code, priority },
+    orgId,
+    rawCount: allAnnouncements.length,
+    importantCount: announcements.length,
+    announcements,
+    warning: ""
+  };
 }
 
 function symbolFromCode(code = "") {
@@ -568,24 +586,88 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
   for (const item of dailyCandidates || []) addStock(item, "P2今日候选");
   for (const item of fiveXIdeas || []) addStock(item, "P2五倍候选");
   for (const item of valueIdeas || []) addStock(item, "P2估值候选");
-  const fetched = [];
   const stocks = Array.from(stockMap.values())
     .filter(stock => CNINFO_ORG_IDS[stock.code] || TRACKED_EXTRA_CNINFO[stock.code])
     .slice(0, 80);
+  const currentHoldingCodes = new Set(STOCKS.map(stock => stock[2]));
+  const fetched = [];
+  const coverage = [];
   const results = await Promise.allSettled(stocks.map(stock => fetchCninfoAnnouncementsForStock(stock)));
-  for (const result of results) {
-    if (result.status === "fulfilled") fetched.push(...result.value);
-    else console.warn(`holding announcement fallback: ${result.reason?.message || result.reason}`);
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    const stock = stocks[i];
+    if (result.status === "fulfilled") {
+      fetched.push(...result.value.announcements);
+      coverage.push({
+        name: result.value.stock.name,
+        code: result.value.stock.code,
+        priority: result.value.stock.priority,
+        status: result.value.warning ? "未完整覆盖" : "已查询巨潮",
+        source: "巨潮资讯",
+        checkedRange: "最近10天",
+        rawCount: result.value.rawCount,
+        importantCount: result.value.importantCount,
+        latestTitles: result.value.announcements.slice(0, 3).map(item => `${item.date} ${item.title}`),
+        risk: result.value.warning || (result.value.importantCount ? "有重要公告，必须逐条读原文并映射仓位。" : "最近10天巨潮未筛出重大公告；仍需结合交易所、财联社、同花顺异动和公司新闻复核。")
+      });
+    } else {
+      const message = result.reason?.message || result.reason || "未知错误";
+      console.warn(`holding announcement fallback: ${message}`);
+      coverage.push({
+        name: stock.name,
+        code: stock.code,
+        priority: stock.priority,
+        status: "查询失败",
+        source: "巨潮资讯",
+        checkedRange: "最近10天",
+        rawCount: null,
+        importantCount: null,
+        latestTitles: [],
+        risk: `公告源查询失败：${message}。不能当作没有公告，必须人工复核。`
+      });
+    }
   }
   const manualByKey = new Map(HOLDING_HARD_EVENTS.map(item => [`${item.code}-${item.title}`, item]));
   for (const item of fetched) {
     const key = `${item.code}-${item.title}`;
     if (!manualByKey.has(key)) manualByKey.set(key, item);
   }
-  return Array.from(manualByKey.values())
-    .filter(item => STOCKS.some(stock => stock[2] === item.code))
+  for (const item of HOLDING_HARD_EVENTS) {
+    const row = coverage.find(x => x.code === item.code);
+    if (row && !row.latestTitles.includes(`${item.date} ${item.title}`)) {
+      row.status = row.status === "查询失败" ? "查询失败/手工补充" : "已查询巨潮/手工补充";
+      row.latestTitles = [`${item.date} ${item.title}`, ...row.latestTitles].slice(0, 3);
+      row.importantCount = Number(row.importantCount || 0) + 1;
+      row.risk = "存在持仓硬事件，必须优先读原文；不能用泛泛板块判断替代。";
+    }
+  }
+  const events = Array.from(manualByKey.values())
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.name).localeCompare(String(b.name)))
-    .slice(0, 30);
+    .sort((a, b) => Number(currentHoldingCodes.has(b.code)) - Number(currentHoldingCodes.has(a.code)))
+    .slice(0, 80);
+  const coverageCodes = new Set(coverage.map(item => item.code));
+  for (const [symbol, name, code] of STOCKS) {
+    if (!coverageCodes.has(code)) {
+      coverage.unshift({
+        name,
+        code,
+        priority: "P0持仓",
+        status: "未进入公告查询",
+        source: "巨潮资讯",
+        checkedRange: "最近10天",
+        rawCount: null,
+        importantCount: null,
+        latestTitles: [],
+        risk: `当前持仓 ${symbol} 没有进入公告查询列表，这是高优先级数据缺口。`
+      });
+    }
+  }
+  return {
+    events,
+    coverage: coverage
+      .sort((a, b) => Number(currentHoldingCodes.has(b.code)) - Number(currentHoldingCodes.has(a.code)) || String(a.priority).localeCompare(String(b.priority)))
+      .slice(0, 80)
+  };
 }
 
 async function fetchTushareAStockSnapshot() {
@@ -3096,6 +3178,7 @@ function compactDashboardForModel(dashboard) {
     fiveXModel: dashboard.macro?.fiveXModel || {},
     researchRadarTasks: dashboard.macro?.researchRadarTasks || [],
     holdingHardEvents: dashboard.macro?.holdingHardEvents || [],
+    announcementCoverage: dashboard.macro?.announcementCoverage || [],
     earningsAnalystSummary: dashboard.macro?.earningsAnalystSummary || {},
     earningsActionIdeas: dashboard.macro?.earningsActionIdeas || [],
     earningsRadarPolicy: dashboard.macro?.earningsRadarPolicy || [],
@@ -3236,7 +3319,8 @@ async function buildModelAnalysis(dashboard, session) {
 10. 必须单独评估超跌/低估股票：只有估值压缩、基本面未坏、行业有修复催化、技术止跌或资金回流同时出现，才可以观察；不能因为跌得多就建议买入，要警惕价值陷阱。
 11. 财报季必须高亮A股业绩超预期公司：净利润/扣非同比100%以上重点列出，300%以上或扭亏且利润体量明显更靠前；必须解释为什么指标变好、是否低基数/一次性、下一期能否延续。
 12. 必须关注海外指标公司财报和指引，包括但不限于英伟达、谷歌、苹果、特斯拉、SpaceX、微软、Meta、Amazon、美光、闪迪/西部数据、SK海力士、三星、台积电、ASML、博通、AMD；说明对A股AI服务器、PCB、光模块、半导体材料、存储、消费电子、新能源车、机器人/低空等方向的影响。
-13. 不要承诺收益，不要使用“必涨”等确定性表达。
+13. 必须逐只检查当前持仓的 announcementCoverage 和 holdingHardEvents：已抓到的公告要映射到仓位动作；查询失败、未配置、未完整覆盖时必须明确写“未自动确认，需复核”，不能把抓不到写成没有新闻。
+14. 不要承诺收益，不要使用“必涨”等确定性表达。
 返回JSON字段：
 {
   "summary": "100字内总判断",
@@ -3498,10 +3582,26 @@ async function main() {
     statusPrefix: "5倍模型",
     excludeCodes: ["002463"]
   });
-  const holdingHardEvents = await fetchHoldingHardEvents(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas).catch(error => {
+  const holdingHardEventResult = await fetchHoldingHardEvents(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas).catch(error => {
     console.warn(`holding hard events fallback: ${error.message}`);
-    return HOLDING_HARD_EVENTS;
+    return {
+      events: HOLDING_HARD_EVENTS,
+      coverage: STOCKS.map(([symbol, name, code]) => ({
+        name,
+        code,
+        priority: "P0持仓",
+        status: "查询失败/手工兜底",
+        source: "巨潮资讯",
+        checkedRange: "最近10天",
+        rawCount: null,
+        importantCount: null,
+        latestTitles: HOLDING_HARD_EVENTS.filter(item => item.code === code).map(item => `${item.date} ${item.title}`),
+        risk: `公告源整体查询失败：${error.message}。不能当作没有公告，必须人工复核。`
+      }))
+    };
   });
+  const holdingHardEvents = holdingHardEventResult.events || [];
+  const announcementCoverage = holdingHardEventResult.coverage || [];
   const scanScopeText = marketWideSnapshot.length
     ? `估值质量扫描：${marketWideSource}${marketWideSnapshot.length}只；可操作池排除科创/北证`
     : hasPreviousFullMarketValue
@@ -3535,7 +3635,8 @@ async function main() {
     macro: {
       ...macro,
       session,
-      holdingHardEvents
+      holdingHardEvents,
+      announcementCoverage
     },
     portfolio: {
       totalValue: "",
