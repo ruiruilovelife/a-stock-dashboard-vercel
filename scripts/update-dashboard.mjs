@@ -1021,6 +1021,109 @@ async function fetchTushareValueFinancials() {
   };
 }
 
+function eastmoneyReportDate(period) {
+  const value = String(period || "");
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+}
+
+async function fetchEastmoneyFinancialPeriod(period) {
+  const pageSize = 500;
+  const filter = encodeURIComponent(`(REPORTDATE='${eastmoneyReportDate(period)}')`);
+  const urlForPage = (pageNumber) => `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_LICO_FN_CPD&columns=ALL&pageNumber=${pageNumber}&pageSize=${pageSize}&sortColumns=SECURITY_CODE&sortTypes=1&filter=${filter}&source=WEB&client=WEB`;
+  const first = await fetchJsonWithRetry(urlForPage(1), `Eastmoney financial ${period}`);
+  const totalPages = Math.min(40, Number(first.result?.pages || 1));
+  const rows = [...(first.result?.data || [])];
+  for (let page = 2; page <= totalPages; page += 5) {
+    const pageNumbers = Array.from({ length: Math.min(5, totalPages - page + 1) }, (_, index) => page + index);
+    const batches = await Promise.all(pageNumbers.map(pageNumber =>
+      fetchJsonWithRetry(urlForPage(pageNumber), `Eastmoney financial ${period} page ${pageNumber}`)
+        .then(json => json.result?.data || [])
+        .catch(error => {
+          console.warn(`Eastmoney financial page fallback: ${error.message}`);
+          return [];
+        })
+    ));
+    for (const batch of batches) rows.push(...batch);
+  }
+  const latestByCode = new Map();
+  for (const row of rows) {
+    const code = String(row.SECURITY_CODE || "");
+    if (!/^\d{6}$/.test(code) || row.SECURITY_TYPE !== "A股") continue;
+    const previous = latestByCode.get(code);
+    const rowKey = `${row.UPDATE_DATE || ""}${row.ISNEW || ""}`;
+    const previousKey = previous ? `${previous.UPDATE_DATE || ""}${previous.ISNEW || ""}` : "";
+    if (!previous || rowKey >= previousKey) latestByCode.set(code, row);
+  }
+  return latestByCode;
+}
+
+async function fetchEastmoneyValueFinancials() {
+  const periods = latestAnnualPeriods(3);
+  const periodMaps = [];
+  const errors = [];
+  for (const period of periods) {
+    const map = await fetchEastmoneyFinancialPeriod(period).catch(error => {
+      errors.push(`${period}: ${error.message}`);
+      return new Map();
+    });
+    periodMaps.push([period, map]);
+  }
+  const codes = new Set(periodMaps.flatMap(([, map]) => [...map.keys()]));
+  const byCode = new Map();
+  for (const code of codes) {
+    const annual = periodMaps
+      .map(([period, map]) => {
+        const row = map.get(code);
+        if (!row) return null;
+        const eps = toNumber(row.BASIC_EPS);
+        const ocfps = toNumber(row.MGJYXJJE);
+        return {
+          period,
+          revenue: toNumber(row.TOTAL_OPERATE_INCOME),
+          profit: toNumber(row.PARENT_NETPROFIT),
+          revenueGrowth: toNumber(row.YSTZ),
+          profitGrowth: toNumber(row.SJLTZ),
+          roe: toNumber(row.WEIGHTAVG_ROE),
+          grossMargin: toNumber(row.XSMLL),
+          ocfToProfit: eps !== null && eps !== 0 && ocfps !== null ? Number(((ocfps / eps) * 100).toFixed(1)) : null,
+          industry: row.PUBLISHNAME || row.BOARD_NAME || null
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => String(a.period).localeCompare(String(b.period)));
+    if (!annual.length) continue;
+    const latest = annual.at(-1);
+    const oldest = annual[0];
+    const years = Math.max(1, annual.length - 1);
+    byCode.set(code, {
+      periods: annual.map(row => row.period),
+      revenueCagr3Y: cagrPercent(latest.revenue, oldest.revenue, years),
+      profitCagr3Y: cagrPercent(latest.profit, oldest.profit, years),
+      latestRevenueGrowth: latest.revenueGrowth,
+      latestProfitGrowth: latest.profitGrowth,
+      roe: latest.roe,
+      roeTrend: latest.roe !== null && oldest.roe !== null ? Number((latest.roe - oldest.roe).toFixed(1)) : null,
+      grossMargin: latest.grossMargin,
+      marginTrend: latest.grossMargin !== null && oldest.grossMargin !== null
+        ? Number((latest.grossMargin - oldest.grossMargin).toFixed(1))
+        : null,
+      ocfToProfit: latest.ocfToProfit,
+      debtToAssets: null,
+      ebitda: null,
+      netDebt: null,
+      industry: latest.industry,
+      reportPeriod: latest.period
+    });
+  }
+  return {
+    byCode,
+    source: errors.length ? `东方财富三年财务部分覆盖（${errors.length}期失败）` : "东方财富三年年报公开数据",
+    periods,
+    covered: byCode.size,
+    errors
+  };
+}
+
 function cninfoPlate(symbol) {
   return symbol.startsWith("sh") ? "sh" : "sz";
 }
@@ -5058,7 +5161,7 @@ async function main() {
       marketWideSource = `${marketWideSource}+Tushare估值补充`;
     }
   }
-  const valueFinancialResult = await fetchTushareValueFinancials().catch(error => {
+  let valueFinancialResult = await fetchTushareValueFinancials().catch(error => {
     console.warn(`Tushare value financial fallback: ${error.message}`);
     return {
       byCode: new Map(),
@@ -5068,6 +5171,32 @@ async function main() {
       errors: [error.message]
     };
   });
+  if (valueFinancialResult.covered < 1000) {
+    const eastmoneyFinancial = await fetchEastmoneyValueFinancials().catch(error => {
+      console.warn(`Eastmoney value financial fallback: ${error.message}`);
+      return {
+        byCode: new Map(),
+        source: `东方财富财务失败：${error.message}`,
+        periods: [],
+        covered: 0,
+        errors: [error.message]
+      };
+    });
+    if (eastmoneyFinancial.covered > valueFinancialResult.covered) {
+      valueFinancialResult = eastmoneyFinancial;
+    }
+  }
+  if (valueFinancialResult.covered) {
+    marketWideSnapshot = marketWideSnapshot.map(row => {
+      const financial = valueFinancialResult.byCode.get(row.code);
+      return {
+        ...row,
+        industry: row.industry && row.industry !== "未分行业"
+          ? row.industry
+          : financial?.industry || row.industry
+      };
+    });
+  }
   const oversoldQuotes = await fetchSina(OVERSOLD_VALUE_POOL.map(x => x[0])).catch(error => {
     console.warn(`oversold quote fallback: ${error.message}`);
     return [];
@@ -5308,6 +5437,8 @@ if (process.env.SKIP_DASHBOARD_MAIN !== "true") {
 export {
   buildMarketWideValueResearch,
   buildRollingResearchPool,
+  fetchEastmoneyAStockSnapshot,
+  fetchEastmoneyValueFinancials,
   futureMarketCapSpace,
   growthPotentialScore,
   valuationSafetyScore
