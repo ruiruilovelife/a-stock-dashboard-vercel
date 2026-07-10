@@ -606,6 +606,62 @@ const FUTURE_GROWTH_UNIVERSE = [
   }
 ];
 
+const VALUE_RESEARCH_OVERRIDES = {
+  "300416": {
+    industry: "高端制造",
+    chain: "可靠性试验/半导体与航天测试",
+    tier: "S",
+    moatLevel: 4,
+    moat: "可靠性试验设备与服务一体化，客户认证、实验室网络和行业经验构成壁垒。",
+    catalysts: ["AI芯片与先进封装测试需求", "商业航天和低空装备可靠性验证", "实验室产能利用率提升"],
+    risk: "下游资本开支放缓、实验室利用率不足或订单确认节奏低于预期。"
+  },
+  "601128": {
+    industry: "银行",
+    chain: "区域银行/小微金融",
+    tier: "B",
+    moatLevel: 4,
+    moat: "区域客户基础、小微风控和较稳定的资产质量形成经营壁垒。",
+    catalysts: ["净息差企稳", "资产质量优于同业", "分红率提升"],
+    risk: "区域信用风险、净息差继续收窄或资产质量拐点向下。"
+  },
+  "688126": {
+    industry: "半导体材料",
+    chain: "大硅片/国产替代",
+    tier: "S",
+    moatLevel: 4,
+    moat: "大尺寸硅片技术、客户验证和规模化制造形成较高进入壁垒。",
+    catalysts: ["12英寸硅片稼动率提升", "国产晶圆厂扩产", "产品结构和良率改善"],
+    risk: "科创板当前不可交易；行业供给压力、稼动率不足或盈利改善慢于预期。"
+  },
+  "002409": {
+    industry: "半导体材料",
+    chain: "前驱体/电子特气/国产替代",
+    tier: "S",
+    moatLevel: 4,
+    moat: "电子材料产品矩阵、客户认证和海外资产协同形成较强壁垒。",
+    catalysts: ["存储周期回升", "前驱体和电子特气放量", "国产替代加速"],
+    risk: "存储景气回落、客户导入慢或高估值压缩。"
+  }
+};
+
+const VALUE_INDUSTRY_RULES = [
+  { tier: "S", score: 25, re: /AI|人工智能|半导体|机器人|高端制造|国产替代|工业自动化|低空经济|航空航天/ },
+  { tier: "A", score: 20, re: /汽车配件|汽车零部件|新能源车|医疗器械|医疗科技|软件服务|通信设备|电气设备|专用机械|元器件|电子设备|军工/ },
+  { tier: "B", score: 13, re: /银行|保险|证券|煤炭|钢铁|化工|建材|家电|食品|饮料|纺织|地产|运输|公用事业|电力|石油|有色|农业/ }
+];
+
+const VALUE_INDUSTRY_CATALYSTS = [
+  [/AI|人工智能|软件服务|通信设备/, "AI资本开支、国产算力采购和应用商业化"],
+  [/半导体|元器件|电子设备/, "晶圆厂扩产、存储周期和国产替代订单"],
+  [/机器人|工业自动化|专用机械/, "制造业资本开支、机器人量产和国产份额提升"],
+  [/汽车|新能源车/, "800V、智能化、出口和核心客户新定点"],
+  [/医疗|医药/, "招标恢复、创新产品放量和海外商业化"],
+  [/银行|保险|证券/, "利率与资产端改善、资本市场活跃度和分红"],
+  [/煤炭|化工|有色|钢铁|石油/, "供需格局、产品价格和产能纪律"],
+  [/食品|饮料|家电|消费/, "需求修复、渠道库存下降和利润率改善"]
+];
+
 const INDUSTRY_CHAIN_MAP = [
   {
     chain: "AI算力基础设施",
@@ -757,6 +813,7 @@ async function fetchEastmoneyMarketCaps(pool) {
 }
 
 function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -795,6 +852,173 @@ async function fetchTushare(apiName, params, fields) {
   if (json.code !== 0) throw new Error(`Tushare ${apiName} failed: ${json.msg || json.code}`);
   const columns = json.data?.fields || [];
   return (json.data?.items || []).map(item => Object.fromEntries(columns.map((field, index) => [field, item[index]])));
+}
+
+async function fetchTusharePaged(apiName, params, fields, pageSize = 5000, maxPages = 3) {
+  const rows = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const batch = await fetchTushare(apiName, {
+      ...params,
+      limit: pageSize,
+      offset: rows.length
+    }, fields);
+    if (!batch.length) break;
+    rows.push(...batch);
+  }
+  return rows;
+}
+
+function latestAnnualPeriods(count = 3) {
+  const now = new Date();
+  const chinaYear = Number(new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric"
+  }).format(now));
+  const chinaMonth = Number(new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Shanghai",
+    month: "numeric"
+  }).format(now));
+  const latestYear = chinaMonth >= 5 ? chinaYear - 1 : chinaYear - 2;
+  return Array.from({ length: count }, (_, index) => `${latestYear - index}1231`);
+}
+
+function latestRowByCode(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const code = tushareCodeToAShareCode(row.ts_code);
+    if (!code) continue;
+    const previous = map.get(code);
+    const rowKey = `${row.end_date || ""}${row.ann_date || ""}${row.update_flag || ""}`;
+    const previousKey = previous
+      ? `${previous.end_date || ""}${previous.ann_date || ""}${previous.update_flag || ""}`
+      : "";
+    if (!previous || rowKey >= previousKey) map.set(code, row);
+  }
+  return map;
+}
+
+function cagrPercent(latestValue, oldestValue, years) {
+  const latest = Number(latestValue);
+  const oldest = Number(oldestValue);
+  if (!Number.isFinite(latest) || !Number.isFinite(oldest) || latest <= 0 || oldest <= 0 || years <= 0) return null;
+  return Number(((Math.pow(latest / oldest, 1 / years) - 1) * 100).toFixed(1));
+}
+
+async function fetchTushareValueFinancials() {
+  if (!TUSHARE_TOKEN) {
+    return { byCode: new Map(), source: "Tushare财务未配置", periods: [], covered: 0 };
+  }
+  const periods = latestAnnualPeriods(3);
+  const annualByCode = new Map();
+  const errors = [];
+
+  for (const period of periods) {
+    const [incomeRows, indicatorRows, balanceRows] = await Promise.all([
+      fetchTusharePaged(
+        "income_vip",
+        { period, report_type: "1" },
+        "ts_code,ann_date,end_date,revenue,total_revenue,n_income_attr_p,ebitda,update_flag"
+      ).catch(error => {
+        errors.push(`income ${period}: ${error.message}`);
+        return [];
+      }),
+      fetchTusharePaged(
+        "fina_indicator_vip",
+        { period },
+        "ts_code,ann_date,end_date,ebitda,netdebt,roe,roe_waa,grossprofit_margin,netprofit_margin,tr_yoy,or_yoy,netprofit_yoy,dt_netprofit_yoy,ocf_to_profit,debt_to_assets,update_flag"
+      ).catch(error => {
+        errors.push(`fina_indicator ${period}: ${error.message}`);
+        return [];
+      }),
+      period === periods[0]
+        ? fetchTusharePaged(
+            "balancesheet_vip",
+            { period, report_type: "1" },
+            "ts_code,ann_date,end_date,money_cap,st_borr,lt_borr,non_cur_liab_due_1y,bond_payable,update_flag"
+          ).catch(error => {
+            errors.push(`balancesheet ${period}: ${error.message}`);
+            return [];
+          })
+        : Promise.resolve([])
+    ]);
+
+    const incomes = latestRowByCode(incomeRows);
+    const indicators = latestRowByCode(indicatorRows);
+    const balances = latestRowByCode(balanceRows);
+    const codes = new Set([...incomes.keys(), ...indicators.keys(), ...balances.keys()]);
+    for (const code of codes) {
+      const income = incomes.get(code) || {};
+      const indicator = indicators.get(code) || {};
+      const balance = balances.get(code) || {};
+      const rows = annualByCode.get(code) || [];
+      rows.push({
+        period,
+        revenue: toNumber(income.revenue ?? income.total_revenue),
+        profit: toNumber(income.n_income_attr_p),
+        ebitda: toNumber(indicator.ebitda ?? income.ebitda),
+        netDebt: toNumber(indicator.netdebt),
+        roe: toNumber(indicator.roe ?? indicator.roe_waa),
+        grossMargin: toNumber(indicator.grossprofit_margin),
+        netMargin: toNumber(indicator.netprofit_margin),
+        revenueGrowth: toNumber(indicator.tr_yoy ?? indicator.or_yoy),
+        profitGrowth: toNumber(indicator.netprofit_yoy ?? indicator.dt_netprofit_yoy),
+        ocfToProfit: toNumber(indicator.ocf_to_profit),
+        debtToAssets: toNumber(indicator.debt_to_assets),
+        cash: toNumber(balance.money_cap),
+        shortDebt: toNumber(balance.st_borr),
+        longDebt: toNumber(balance.lt_borr),
+        currentLongDebt: toNumber(balance.non_cur_liab_due_1y),
+        bonds: toNumber(balance.bond_payable)
+      });
+      annualByCode.set(code, rows);
+    }
+  }
+
+  const byCode = new Map();
+  for (const [code, rows] of annualByCode.entries()) {
+    const sorted = rows.sort((a, b) => String(a.period).localeCompare(String(b.period)));
+    const latest = sorted.at(-1) || {};
+    const oldest = sorted[0] || {};
+    const years = Math.max(1, sorted.length - 1);
+    const revenueCagr3Y = cagrPercent(latest.revenue, oldest.revenue, years);
+    const profitCagr3Y = cagrPercent(latest.profit, oldest.profit, years);
+    const roeTrend = Number.isFinite(Number(latest.roe)) && Number.isFinite(Number(oldest.roe))
+      ? Number((Number(latest.roe) - Number(oldest.roe)).toFixed(1))
+      : null;
+    const marginTrend = Number.isFinite(Number(latest.grossMargin)) && Number.isFinite(Number(oldest.grossMargin))
+      ? Number((Number(latest.grossMargin) - Number(oldest.grossMargin)).toFixed(1))
+      : null;
+    const debtValues = [latest.shortDebt, latest.longDebt, latest.currentLongDebt, latest.bonds]
+      .filter(value => toNumber(value) !== null)
+      .map(Number);
+    const debt = debtValues.length ? debtValues.reduce((sum, value) => sum + value, 0) : null;
+    byCode.set(code, {
+      periods: sorted.map(row => row.period),
+      revenueCagr3Y,
+      profitCagr3Y,
+      latestRevenueGrowth: toNumber(latest.revenueGrowth),
+      latestProfitGrowth: toNumber(latest.profitGrowth),
+      roe: toNumber(latest.roe),
+      roeTrend,
+      grossMargin: toNumber(latest.grossMargin),
+      marginTrend,
+      ocfToProfit: toNumber(latest.ocfToProfit),
+      debtToAssets: toNumber(latest.debtToAssets),
+      ebitda: toNumber(latest.ebitda),
+      netDebt: toNumber(latest.netDebt) ?? (debt !== null && toNumber(latest.cash) !== null
+        ? debt - Number(latest.cash)
+        : null),
+      reportPeriod: latest.period || null
+    });
+  }
+
+  return {
+    byCode,
+    source: errors.length ? `Tushare财务部分覆盖（${errors.length}项失败）` : "Tushare三年财务数据",
+    periods,
+    covered: byCode.size,
+    errors: errors.slice(0, 6)
+  };
 }
 
 function cninfoPlate(symbol) {
@@ -1440,7 +1664,7 @@ async function fetchTushareAStockSnapshot() {
     const dailyBasic = await fetchTushare(
       "daily_basic",
       { trade_date: tradeDate },
-      "ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,total_mv,circ_mv"
+      "ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,ps,ps_ttm,total_mv,circ_mv"
     );
     if (!dailyBasic.length) continue;
     const dailyRows = await fetchTushare(
@@ -1472,6 +1696,8 @@ async function fetchTushareAStockSnapshot() {
         pe: toNumber(row.pe),
         peTtm: toNumber(row.pe_ttm),
         pb: toNumber(row.pb),
+        ps: toNumber(row.ps),
+        psTtm: toNumber(row.ps_ttm),
         marketCapYi: Number.isFinite(Number(row.total_mv)) ? Number((Number(row.total_mv) / 10000).toFixed(1)) : null,
         floatCapYi: Number.isFinite(Number(row.circ_mv)) ? Number((Number(row.circ_mv) / 10000).toFixed(1)) : null,
         buyable: isBuyableAShareCode(code)
@@ -1509,7 +1735,7 @@ async function fetchEastmoneyAStockSnapshot() {
   const rows = [];
   const pageSize = 100;
   const fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23";
-  const fields = "f2,f3,f6,f8,f9,f12,f14,f20,f21,f23,f115";
+  const fields = "f2,f3,f6,f8,f9,f12,f14,f20,f21,f23,f100,f115";
   for (let page = 1; page <= 80; page += 1) {
     const query = `pn=${page}&pz=${pageSize}&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=${encodeURIComponent(fs)}&fields=${fields}`;
     const json = await fetchJsonWithRetry([
@@ -1523,6 +1749,7 @@ async function fetchEastmoneyAStockSnapshot() {
       rows.push({
         code,
         name: row.f14 || "",
+        industry: row.f100 || "未分行业",
         close: toNumber(row.f2),
         dayPct: toNumber(row.f3),
         amountRaw: toNumber(row.f6),
@@ -2704,69 +2931,398 @@ function valueRecoveryScore(q, meta, weekly, marketCapYi) {
   return Number(Math.min(10, score).toFixed(1));
 }
 
-function valueQualityScore(row) {
-  let score = 0;
-  const pe = Number(row.peTtm ?? row.pe);
-  const pb = Number(row.pb);
-  const marketCap = Number(row.marketCapYi);
+function clampScore(value, min, max) {
+  return Math.max(min, Math.min(max, Number(value) || 0));
+}
+
+function valueResearchOverride(code) {
+  const growth = FUTURE_GROWTH_UNIVERSE.find(item => item.code === code);
+  const extra = VALUE_RESEARCH_OVERRIDES[code];
+  if (!growth && !extra) return null;
+  return {
+    ...(growth || {}),
+    ...(extra || {}),
+    catalysts: extra?.catalysts || growth?.catalysts || [],
+    risk: extra?.risk || (growth?.risks || []).join("；")
+  };
+}
+
+function valueIndustryProfile(row, override) {
+  if (override?.tier) {
+    const scores = { S: 25, A: 20, B: 13, C: 8 };
+    return {
+      tier: override.tier,
+      score: scores[override.tier] ?? 8,
+      label: override.industry || row.industry || "待分类",
+      chain: override.chain || "产业链位置待核验",
+      source: "产业认知库"
+    };
+  }
+  const text = `${row.industry || ""} ${row.name || ""}`;
+  const match = VALUE_INDUSTRY_RULES.find(rule => rule.re.test(text));
+  return {
+    tier: match?.tier || "C",
+    score: match?.score || 8,
+    label: row.industry || "未分行业",
+    chain: "行业细分位置待核验",
+    source: row.industry ? "全市场行业分类" : "行业数据待补"
+  };
+}
+
+function fallbackFinancialForValue(row) {
+  const meta = OVERSOLD_VALUE_POOL.find(item => item[2] === row.code)?.[6];
+  if (!meta) return {};
+  return {
+    revenueCagr3Y: null,
+    profitCagr3Y: Number.isFinite(Number(meta.profitGrowth)) ? Number(meta.profitGrowth) : null,
+    latestRevenueGrowth: null,
+    latestProfitGrowth: Number.isFinite(Number(meta.profitGrowth)) ? Number(meta.profitGrowth) : null,
+    roe: Number.isFinite(Number(meta.roe)) ? Number(meta.roe) : null,
+    roeTrend: null,
+    grossMargin: null,
+    marginTrend: null,
+    ocfToProfit: Number.isFinite(Number(meta.cashQuality)) ? Number(meta.cashQuality) * 100 : null,
+    debtToAssets: null,
+    reportPeriod: "手工样本数据"
+  };
+}
+
+function metricPoints(value, bands) {
+  const number = toNumber(value);
+  if (number === null) return 0;
+  for (const [limit, points] of bands) {
+    if (number <= limit) return points;
+  }
+  return 0;
+}
+
+function industryValuationMedians(snapshot) {
+  const grouped = new Map();
+  for (const row of snapshot || []) {
+    const key = row.industry || "未分行业";
+    const list = grouped.get(key) || [];
+    list.push(row);
+    grouped.set(key, list);
+  }
+  const result = new Map();
+  for (const [key, rows] of grouped.entries()) {
+    const positive = (field) => rows.map(row => Number(row[field])).filter(value => Number.isFinite(value) && value > 0);
+    result.set(key, {
+      pe: median(positive("peTtm")),
+      pb: median(positive("pb")),
+      ps: median(positive("psTtm"))
+    });
+  }
+  return result;
+}
+
+function valuationSafetyScore(row, financial, medians) {
+  const pe = toNumber(row.peTtm ?? row.pe);
+  const pb = toNumber(row.pb);
+  const ps = toNumber(row.psTtm ?? row.ps);
+  const marketCap = toNumber(row.marketCapYi);
+  const ebitda = toNumber(financial.ebitda);
+  const netDebt = toNumber(financial.netDebt);
+  const enterpriseValueYi = marketCap !== null && netDebt !== null
+    ? marketCap + netDebt / 100000000
+    : null;
+  const evEbitda = enterpriseValueYi !== null && ebitda !== null && ebitda > 0
+    ? enterpriseValueYi / (ebitda / 100000000)
+    : null;
+
+  const peScore = metricPoints(pe, [[12, 7], [20, 6], [30, 4], [45, 2]]);
+  const pbScore = metricPoints(pb, [[1, 5], [2, 4], [3, 2.5], [5, 1]]);
+  const psScore = metricPoints(ps, [[1.5, 5], [3, 4], [6, 2], [10, 1]]);
+  const evScore = metricPoints(evEbitda, [[10, 4], [15, 3], [22, 1.5]]);
+  let relativeScore = 0;
+  for (const [value, industryMedian] of [[pe, medians?.pe], [pb, medians?.pb], [ps, medians?.ps]]) {
+    if (value === null || !Number.isFinite(industryMedian) || value <= 0 || industryMedian <= 0) continue;
+    const ratio = value / industryMedian;
+    relativeScore += ratio <= 0.7 ? 1.5 : ratio <= 0.9 ? 1 : ratio <= 1.1 ? 0.5 : 0;
+  }
+  relativeScore = Math.min(4, relativeScore);
+  return {
+    score: Number(clampScore(peScore + pbScore + psScore + evScore + relativeScore, 0, 25).toFixed(1)),
+    pe: pe !== null ? Number(pe.toFixed(1)) : null,
+    pb: pb !== null ? Number(pb.toFixed(2)) : null,
+    ps: ps !== null ? Number(ps.toFixed(1)) : null,
+    evEbitda: evEbitda !== null ? Number(evEbitda.toFixed(1)) : null,
+    relativeScore: Number(relativeScore.toFixed(1))
+  };
+}
+
+function growthPotentialScore(financial) {
+  const revenueCagr = toNumber(financial.revenueCagr3Y);
+  const profitCagr = toNumber(financial.profitCagr3Y);
+  const revenueGrowth = toNumber(financial.latestRevenueGrowth);
+  const profitGrowth = toNumber(financial.latestProfitGrowth);
+  const roe = toNumber(financial.roe);
+  const roeTrend = toNumber(financial.roeTrend);
+  const marginTrend = toNumber(financial.marginTrend);
+  const revenueScore = revenueCagr === null ? 0
+    : revenueCagr >= 30 ? 8 : revenueCagr >= 20 ? 7 : revenueCagr >= 10 ? 5 : revenueCagr >= 5 ? 3 : revenueCagr > 0 ? 1 : 0;
+  const profitScore = profitCagr === null ? 0
+    : profitCagr >= 50 ? 10 : profitCagr >= 30 ? 8 : profitCagr >= 15 ? 6 : profitCagr >= 5 ? 3 : profitCagr > 0 ? 1 : 0;
+  const elasticity = revenueGrowth !== null && profitGrowth !== null
+    ? profitGrowth - revenueGrowth
+    : null;
+  const elasticityScore = elasticity !== null
+    ? (revenueGrowth >= 10 && profitGrowth >= 50 ? 5 : elasticity >= 30 ? 4 : elasticity >= 15 ? 3 : profitGrowth > revenueGrowth && profitGrowth > 0 ? 2 : 0)
+    : 0;
+  const roeScore = roeTrend !== null
+    ? (roeTrend >= 5 ? 5 : roeTrend >= 2 ? 4 : roeTrend > 0 ? 3 : roe >= 15 ? 2 : 0)
+    : roe !== null && roe >= 18 ? 2 : 0;
+  const marginScore = marginTrend !== null ? (marginTrend >= 2 ? 2 : marginTrend > 0 ? 1 : 0) : 0;
+  return {
+    score: Number(clampScore(revenueScore + profitScore + elasticityScore + roeScore + marginScore, 0, 30).toFixed(1)),
+    revenueCagr3Y: revenueCagr,
+    profitCagr3Y: profitCagr,
+    latestRevenueGrowth: revenueGrowth,
+    latestProfitGrowth: profitGrowth,
+    profitElasticity: elasticity !== null ? Number(elasticity.toFixed(1)) : null,
+    roe,
+    roeTrend,
+    marginTrend
+  };
+}
+
+function moatQualityScore(financial, override) {
+  if (override?.moatLevel) {
+    return {
+      score: Math.min(15, Number(override.moatLevel) * 3),
+      level: Number(override.moatLevel),
+      read: override.moat || "产业认知库已确认壁垒",
+      verified: true
+    };
+  }
+  let score = 4;
+  if (toNumber(financial.roe) !== null && Number(financial.roe) >= 18) score += 2;
+  if (toNumber(financial.grossMargin) !== null && Number(financial.grossMargin) >= 30) score += 2;
+  if (toNumber(financial.ocfToProfit) !== null && Number(financial.ocfToProfit) >= 80) score += 2;
+  if (toNumber(financial.marginTrend) !== null && Number(financial.marginTrend) >= 0) score += 1;
+  if (toNumber(financial.debtToAssets) !== null && Number(financial.debtToAssets) > 0 && Number(financial.debtToAssets) <= 50) score += 1;
+  score = Math.min(10, score);
+  return {
+    score,
+    level: Math.max(1, Math.round(score / 3)),
+    read: "财务质量显示一定经营优势，但行业排名、技术与客户壁垒仍待核验。",
+    verified: false
+  };
+}
+
+function valueTechnicalEntryScore(row) {
+  const dayPct = Number(row.dayPct);
   const amountYi = Number(row.amountRaw) / 100000000;
   const turnover = Number(row.turnover);
-  if (Number.isFinite(pe) && pe > 0 && pe <= 18) score += 2.2;
-  else if (Number.isFinite(pe) && pe > 18 && pe <= 28) score += 1.2;
-  if (Number.isFinite(pb) && pb > 0 && pb <= 1.5) score += 2;
-  else if (Number.isFinite(pb) && pb > 1.5 && pb <= 2.5) score += 1;
-  if (Number.isFinite(marketCap) && marketCap >= 40 && marketCap <= 500) score += 1.4;
-  else if (Number.isFinite(marketCap) && marketCap > 500 && marketCap <= 1500) score += 0.7;
-  if (Number.isFinite(amountYi) && amountYi >= 2) score += 0.8;
-  if (Number.isFinite(turnover) && turnover >= 0.5 && turnover <= 8) score += 0.8;
-  if (Number(row.dayPct) > 0) score += 0.5;
-  return Number(Math.min(10, score).toFixed(1));
+  let score = 1;
+  if (Number.isFinite(amountYi) && amountYi >= 2) score += 1.5;
+  if (Number.isFinite(turnover) && turnover >= 0.5 && turnover <= 8) score += 1;
+  if (Number.isFinite(dayPct) && dayPct > 0 && dayPct <= 5) score += 1;
+  if (Number.isFinite(dayPct) && dayPct > 5) score += 0.5;
+  return Number(clampScore(score, 0, 5).toFixed(1));
 }
 
-function valueQualityPhase(score, row) {
-  const pe = Number(row.peTtm ?? row.pe);
-  const pb = Number(row.pb);
-  if (score >= 6.5 && pe > 0 && pb > 0) return "硬指标低估观察";
-  if (score >= 5) return "估值待验证";
-  return "不入选";
+function valueTrapDetection(valuation, growth, financial, industry) {
+  let index = 0;
+  const reasons = [];
+  if (Number(growth.latestRevenueGrowth) < 0 || Number(growth.revenueCagr3Y) < 0) {
+    index += 18;
+    reasons.push("营收下降");
+  }
+  if (Number(growth.latestProfitGrowth) < 0 || Number(growth.profitCagr3Y) < 0) {
+    index += 22;
+    reasons.push("利润下降");
+  }
+  if (Number(growth.marginTrend) < 0) {
+    index += 15;
+    reasons.push("毛利率下降");
+  }
+  if (Number(growth.roeTrend) < 0) {
+    index += 15;
+    reasons.push("ROE趋势向下");
+  }
+  if (Number.isFinite(Number(financial.ocfToProfit)) && Number(financial.ocfToProfit) < 60) {
+    index += Number(financial.ocfToProfit) < 0 ? 20 : 15;
+    reasons.push("经营现金流弱于利润");
+  }
+  if (Number(financial.debtToAssets) >= 70) {
+    index += 10;
+    reasons.push("负债率偏高");
+  }
+  if (industry.tier === "B" || industry.tier === "C") {
+    if ((growth.latestRevenueGrowth ?? growth.revenueCagr3Y ?? 0) <= 0) {
+      index += 5;
+      reasons.push("行业成长性偏低");
+    }
+  }
+  const hasFinancialCore = [growth.revenueCagr3Y, growth.profitCagr3Y, growth.roe, financial.ocfToProfit]
+    .filter(value => toNumber(value) !== null).length >= 2;
+  if (!hasFinancialCore) {
+    index += 20;
+    reasons.push("三年财务数据覆盖不足");
+  }
+  if ((valuation.pe != null && valuation.pe < 8) || (valuation.pb != null && valuation.pb < 0.8)) {
+    if (reasons.length) index += 5;
+  }
+  const risk = index >= 60 ? "高" : index >= 35 ? "中" : "低";
+  return {
+    index: Math.min(100, index),
+    risk,
+    reasons: reasons.length ? reasons : ["暂未发现明确低估陷阱信号"]
+  };
 }
 
-function buildMarketWideValueIdeas(snapshot, previous) {
-  const priorByCode = new Map((previous.oversoldValueIdeas || []).map(x => [x.code, x]));
-  return (snapshot || [])
+function futureMarketCapSpace(row, valuation, growth, financial, industry) {
+  const current = Number(row.marketCapYi);
+  if (!Number.isFinite(current) || current <= 0) return { targetMcapYi: null, upsideMultiple: null, method: "市值数据不足" };
+  const profitGrowth = toNumber(growth.profitCagr3Y) !== null
+    ? Number(growth.profitCagr3Y)
+    : toNumber(growth.latestProfitGrowth);
+  const revenueGrowth = toNumber(growth.revenueCagr3Y) !== null
+    ? Number(growth.revenueCagr3Y)
+    : toNumber(growth.latestRevenueGrowth);
+  const targetPe = /银行/.test(industry.label) ? 10 : industry.tier === "S" ? 35 : industry.tier === "A" ? 28 : industry.tier === "B" ? 18 : 15;
+  const targetPs = industry.tier === "S" ? 5 : industry.tier === "A" ? 3.5 : industry.tier === "B" ? 2 : 1.5;
+  const estimates = [];
+  if (valuation.pe && valuation.pe > 0 && profitGrowth !== null) {
+    const normalizedGrowth = clampScore(profitGrowth, -15, 60) / 100;
+    estimates.push((current / valuation.pe) * Math.pow(1 + normalizedGrowth, 3) * targetPe);
+  }
+  if (valuation.ps && valuation.ps > 0 && revenueGrowth !== null) {
+    const normalizedGrowth = clampScore(revenueGrowth, -10, 45) / 100;
+    estimates.push((current / valuation.ps) * Math.pow(1 + normalizedGrowth, 3) * targetPs);
+  }
+  if (!estimates.length) return { targetMcapYi: null, upsideMultiple: null, method: "成长或估值数据不足" };
+  const rawTarget = median(estimates.filter(value => Number.isFinite(value) && value > 0));
+  const target = Math.max(current * 0.7, Math.min(current * 8, rawTarget));
+  return {
+    targetMcapYi: Number(target.toFixed(0)),
+    upsideMultiple: Number((target / current).toFixed(1)),
+    method: estimates.length > 1 ? "盈利与收入双模型中位数" : valuation.pe ? "三年盈利情景" : "三年收入情景"
+  };
+}
+
+function potentialStars(multiple) {
+  const value = Number(multiple);
+  if (!Number.isFinite(value)) return 0;
+  if (value >= 5) return 5;
+  if (value >= 3.5) return 4;
+  if (value >= 2.5) return 3;
+  if (value >= 1.7) return 2;
+  return 1;
+}
+
+function valueCyclePosition(industry, growth) {
+  if ((industry.tier === "S" || industry.tier === "A") && Number(growth.latestProfitGrowth ?? growth.profitCagr3Y) >= 30) return "成长加速期";
+  if ((industry.tier === "S" || industry.tier === "A") && Number(growth.revenueCagr3Y) > 0) return "产业扩张期";
+  if (/煤炭|化工|有色|钢铁|石油/.test(industry.label)) return "周期位置待价格验证";
+  if (/银行|保险|证券|食品|家电/.test(industry.label)) return "成熟期/估值修复";
+  return "基本面拐点待确认";
+}
+
+function valueCatalyst(row, override, industry) {
+  if (override?.catalysts?.length) return override.catalysts.slice(0, 2).join("；");
+  const text = `${industry.label} ${industry.chain}`;
+  return VALUE_INDUSTRY_CATALYSTS.find(([re]) => re.test(text))?.[1] || "下一份财报、订单和行业景气验证";
+}
+
+function buildMarketWideValueResearch(snapshot, previous, financialByCode = new Map()) {
+  const mediansByIndustry = industryValuationMedians(snapshot);
+  const priorByCode = new Map((previous.oversoldValueIdeas || []).map(item => [item.code, item]));
+  const all = (snapshot || [])
     .filter(row => row.buyable)
     .filter(row => !/^ST|^\*ST/.test(row.name || ""))
     .filter(row => Number(row.close) > 2)
     .map(row => {
-      const score = valueQualityScore(row);
+      const override = valueResearchOverride(row.code);
+      const financial = financialByCode.get(row.code) || fallbackFinancialForValue(row);
+      const industry = valueIndustryProfile(row, override);
+      const valuation = valuationSafetyScore(row, financial, mediansByIndustry.get(row.industry || "未分行业"));
+      const growth = growthPotentialScore(financial);
+      const moat = moatQualityScore(financial, override);
+      const technicalScore = valueTechnicalEntryScore(row);
+      const trap = valueTrapDetection(valuation, growth, financial, industry);
+      const futureSpace = futureMarketCapSpace(row, valuation, growth, financial, industry);
+      const compositeScore = Number(clampScore(valuation.score + growth.score + industry.score + moat.score + technicalScore, 0, 100).toFixed(1));
+      const investmentStatus = trap.risk === "高"
+        ? "低估陷阱风险"
+        : valuation.score >= 19 && compositeScore >= 72
+          ? "深度低估"
+          : "合理低估";
+      const phase = trap.risk === "高"
+        ? "先排除价值陷阱"
+        : compositeScore >= 82 && growth.score >= 20 && industry.score >= 20
+          ? "未来资产重点"
+          : compositeScore >= 70
+            ? "成长价值观察"
+            : "数据待验证";
       const prior = priorByCode.get(row.code) || {};
-      const phase = valueQualityPhase(score, row);
+      const catalyst = valueCatalyst(row, override, industry);
+      const maximumRisk = override?.risk || trap.reasons.slice(0, 2).join("；");
       return {
         name: row.name,
         code: row.code,
-        theme: prior.theme || "全市场估值扫描",
-        logic: "由全A快照按PE/PB/市值/流动性/成交承接筛出，后续必须再核验行业、财报和现金流。",
-        keyCheck: "硬指标初筛通过；下一步必须查ROE、经营现金流、利润增速、负债率和行业景气，确认不是低估陷阱。",
-        score,
+        theme: `${industry.tier}级 ${industry.label}`,
+        industryTier: industry.tier,
+        industryLabel: industry.label,
+        industryChain: industry.chain,
+        industrySource: industry.source,
+        compositeScore,
+        score: compositeScore,
+        valuationScore: valuation.score,
+        growthScore: growth.score,
+        industryScore: industry.score,
+        moatScore: moat.score,
+        technicalScore,
+        valuation,
+        growth,
+        moat,
+        valueTrapIndex: trap.index,
+        valueTrapRisk: trap.risk,
+        valueTrapReasons: trap.reasons,
+        investmentStatus,
         phase,
-        action: phase === "硬指标低估观察"
-          ? "进入硬指标观察，但必须补查财报和行业位置；等技术止跌后再考虑。"
-          : "硬指标有便宜迹象，但数据不完整或质量未确认，只做待验证。",
+        currentMcapYi: row.marketCapYi,
+        targetMcapYi: futureSpace.targetMcapYi,
+        upsideMultiple: futureSpace.upsideMultiple,
+        potentialStars: potentialStars(futureSpace.upsideMultiple),
+        targetMethod: futureSpace.method,
+        cyclePosition: valueCyclePosition(industry, growth),
+        catalyst,
+        maximumRisk,
+        logic: override?.growthWhy || prior.logic || `${industry.label}需要同时验证成长、产业地位与估值，不能只因PE/PB低而入选。`,
+        keyCheck: `核验${financial.reportPeriod || "最新财报"}、行业排名、经营现金流与下一期订单；技术面只决定买点。`,
+        action: trap.risk === "高"
+          ? "暂不参与，先等收入、利润、ROE或现金流至少两项改善。"
+          : compositeScore >= 82
+            ? "进入重点研究；等回踩承接或放量突破再分批验证。"
+            : "进入滚动观察，等待财报和产业催化进一步确认。",
         dayPct: row.dayPct,
         amount: amountText(row.amountRaw),
         close: row.close,
         marketCapYi: row.marketCapYi,
         floatCapYi: row.floatCapYi,
-        pe: row.pe,
-        peTtm: row.peTtm,
-        pb: row.pb,
+        pe: valuation.pe,
+        peTtm: valuation.pe,
+        pb: valuation.pb,
+        ps: valuation.ps,
+        evEbitda: valuation.evEbitda,
         turnover: row.turnover,
-        risk: "低PE/PB可能是盈利下滑、周期下行或财务质量问题造成，必须结合ROE、现金流和财报趋势排除价值陷阱。"
+        financialPeriod: financial.reportPeriod || null,
+        risk: maximumRisk
       };
-    })
-    .filter(x => x.score >= 5)
-    .sort((a, b) => b.score - a.score || Number(a.marketCapYi ?? 999999) - Number(b.marketCapYi ?? 999999))
-    .slice(0, 20);
+    });
+
+  const ideas = all
+    .filter(item => item.compositeScore >= 55 || (item.growthScore >= 18 && item.industryScore >= 20))
+    .filter(item => item.valueTrapRisk !== "高")
+    .sort((a, b) => b.compositeScore - a.compositeScore || Number(b.upsideMultiple ?? -999) - Number(a.upsideMultiple ?? -999))
+    .slice(0, 24);
+  const traps = all
+    .filter(item => item.valuationScore >= 14 && item.valueTrapRisk !== "低")
+    .sort((a, b) => b.valueTrapIndex - a.valueTrapIndex || b.valuationScore - a.valuationScore)
+    .slice(0, 12);
+  return { ideas, traps };
 }
 
 function valueRecoveryPhase(score, weekly) {
@@ -4209,8 +4765,20 @@ function compactDashboardForModel(dashboard) {
       name: x.name,
       code: x.code,
       theme: x.theme,
-      score: x.score,
+      compositeScore: x.compositeScore ?? x.score,
+      valuationScore: x.valuationScore,
+      growthScore: x.growthScore,
+      industryScore: x.industryScore,
+      moatScore: x.moatScore,
+      technicalScore: x.technicalScore,
       phase: x.phase,
+      investmentStatus: x.investmentStatus,
+      valueTrapIndex: x.valueTrapIndex,
+      valueTrapRisk: x.valueTrapRisk,
+      targetMcapYi: x.targetMcapYi,
+      upsideMultiple: x.upsideMultiple,
+      cyclePosition: x.cyclePosition,
+      catalyst: x.catalyst,
       logic: x.logic,
       keyCheck: x.keyCheck,
       dayPct: x.dayPct,
@@ -4224,6 +4792,15 @@ function compactDashboardForModel(dashboard) {
       distanceToHighPct: x.distanceToHighPct,
       action: x.action,
       risk: x.risk
+    })),
+    valueTrapCandidates: (dashboard.valueTrapCandidates || []).map(x => ({
+      name: x.name,
+      code: x.code,
+      valuationScore: x.valuationScore,
+      valueTrapIndex: x.valueTrapIndex,
+      valueTrapRisk: x.valueTrapRisk,
+      reasons: x.valueTrapReasons,
+      industry: x.industryLabel
     })),
     tradeTracking: (dashboard.tradeTracking || []).map(t => ({
       name: t.name,
@@ -4300,7 +4877,7 @@ async function buildModelAnalysis(dashboard, session) {
 7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于85的股票不要建议买入，只能普通观察。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
-10. 必须单独评估超跌/低估股票：只有估值压缩、基本面未坏、行业有修复催化、技术止跌或资金回流同时出现，才可以观察；不能因为跌得多就建议买入，要警惕价值陷阱。
+10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
 11. 财报季必须高亮A股业绩超预期公司：净利润/扣非同比100%以上重点列出，300%以上或扭亏且利润体量明显更靠前；必须解释为什么指标变好、是否低基数/一次性、下一期能否延续。
 12. 必须关注海外指标公司财报和指引，包括但不限于英伟达、谷歌、苹果、特斯拉、SpaceX、微软、Meta、Amazon、美光、闪迪/西部数据、SK海力士、三星、台积电、ASML、博通、AMD；说明对A股AI服务器、PCB、光模块、半导体材料、存储、消费电子、新能源车、机器人/低空等方向的影响。
 13. 必须逐只检查当前持仓的 announcementCoverage 和 holdingHardEvents：已抓到的公告要映射到仓位动作；查询失败、未配置、未完整覆盖时必须明确写“未自动确认，需复核”，不能把抓不到写成没有新闻。
@@ -4459,6 +5036,38 @@ async function main() {
       return [];
     });
   }
+  let tushareMarketSupplement = [];
+  if (marketWideSnapshot.length && TUSHARE_TOKEN && marketWideSource !== "Tushare全A快照") {
+    tushareMarketSupplement = await fetchTushareAStockSnapshot().catch(error => {
+      console.warn(`Tushare market supplement fallback: ${error.message}`);
+      return [];
+    });
+    if (tushareMarketSupplement.length) {
+      const supplementByCode = new Map(tushareMarketSupplement.map(row => [row.code, row]));
+      marketWideSnapshot = marketWideSnapshot.map(row => {
+        const supplement = supplementByCode.get(row.code) || {};
+        return {
+          ...row,
+          industry: row.industry && row.industry !== "未分行业" ? row.industry : supplement.industry,
+          ps: supplement.ps ?? row.ps,
+          psTtm: supplement.psTtm ?? row.psTtm,
+          peTtm: row.peTtm ?? supplement.peTtm,
+          pb: row.pb ?? supplement.pb
+        };
+      });
+      marketWideSource = `${marketWideSource}+Tushare估值补充`;
+    }
+  }
+  const valueFinancialResult = await fetchTushareValueFinancials().catch(error => {
+    console.warn(`Tushare value financial fallback: ${error.message}`);
+    return {
+      byCode: new Map(),
+      source: `Tushare财务失败：${error.message}`,
+      periods: [],
+      covered: 0,
+      errors: [error.message]
+    };
+  });
   const oversoldQuotes = await fetchSina(OVERSOLD_VALUE_POOL.map(x => x[0])).catch(error => {
     console.warn(`oversold quote fallback: ${error.message}`);
     return [];
@@ -4539,11 +5148,16 @@ async function main() {
         };
       })
     : candidateQuotes;
-  const oversoldValueIdeas = marketWideSnapshot.length
-    ? buildMarketWideValueIdeas(marketWideSnapshot, previous)
-    : hasPreviousFullMarketValue
-      ? previous.oversoldValueIdeas
-      : buildOversoldValueIdeas(oversoldQuotes, previous, oversoldWeeklyProfiles, oversoldMarketCaps);
+  const valueResearch = marketWideSnapshot.length
+    ? buildMarketWideValueResearch(marketWideSnapshot, previous, valueFinancialResult.byCode)
+    : {
+        ideas: hasPreviousFullMarketValue
+          ? previous.oversoldValueIdeas
+          : buildOversoldValueIdeas(oversoldQuotes, previous, oversoldWeeklyProfiles, oversoldMarketCaps),
+        traps: previous.valueTrapCandidates || []
+      };
+  const oversoldValueIdeas = valueResearch.ideas;
+  const valueTrapCandidates = valueResearch.traps;
   const valueTrackingQuotes = marketWideSnapshot.length
     ? quoteRowsFromItems(marketWideSnapshot)
     : quoteRowsFromItems(oversoldValueIdeas);
@@ -4556,9 +5170,10 @@ async function main() {
     .sort((a, b) => Number(b.fiveXPotentialIndex ?? -999) - Number(a.fiveXPotentialIndex ?? -999))
     .slice(0, 20);
   const trackedValueIdeas = buildRollingResearchPool(previous, "trackedValueIdeas", oversoldValueIdeas, valueTrackingQuotes, {
-    minScore: 5,
-    scoreField: "score",
-    statusPrefix: "估值质量"
+    minScore: 70,
+    scoreField: "compositeScore",
+    statusPrefix: "成长价值",
+    dropBelowMin: true
   });
   const trackedFiveXIdeas = buildRollingResearchPool(previous, "trackedFiveXIdeas", fiveXIdeas, candidateTrackingQuotes, {
     minScore: 85,
@@ -4605,7 +5220,7 @@ async function main() {
       }));
   });
   const scanScopeText = marketWideSnapshot.length
-    ? `估值质量扫描：${marketWideSource}${marketWideSnapshot.length}只；可操作池排除科创/北证`
+    ? `成长价值扫描：${marketWideSource}${marketWideSnapshot.length}只；${valueFinancialResult.source}覆盖${valueFinancialResult.covered}只；可操作池排除科创/北证`
     : hasPreviousFullMarketValue
       ? `估值质量扫描：本次全A行情源失败，暂沿用上一版全A结果；不把样本池冒充全市场`
       : "估值质量扫描：全A快照失败，本次仅有样本池，占位不作为强结论";
@@ -4625,6 +5240,7 @@ async function main() {
       guidanceInstruction: session.instruction,
       scanScope: scanScopeText,
       candidateScanScope: candidateScanScopeText,
+      valueQualityDataCoverage: `${valueFinancialResult.source}；报告期${valueFinancialResult.periods.join("/") || "待取数"}；覆盖${valueFinancialResult.covered}只`,
       dataSource: "GitHub Actions + 新浪行情接口 + 规则化投研",
       note: "自动化基础版会更新行情和规则化判断；深度新闻研判可后续接入分析模型。"
     },
@@ -4656,6 +5272,14 @@ async function main() {
     industryChainMap,
     davisDoubleCandidates,
     oversoldValueIdeas,
+    valueTrapCandidates,
+    valueQualityModel: {
+      name: "AI产业时代的成长价值发现系统",
+      weights: { valuationSafety: 25, growthPotential: 30, industryValue: 25, moat: 15, technicalEntry: 5 },
+      financialCoverage: valueFinancialResult.covered,
+      financialPeriods: valueFinancialResult.periods,
+      financialSource: valueFinancialResult.source
+    },
     trackedValueIdeas,
     trackedFiveXIdeas,
     trackedCandidates: buildTrackedCandidates(previous, dailyCandidates, candidateTrackingQuotes),
@@ -4674,7 +5298,17 @@ async function main() {
   await fs.writeFile("data/dashboard.json", `${JSON.stringify(dashboard, null, 2)}\n`, "utf8");
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.env.SKIP_DASHBOARD_MAIN !== "true") {
+  main().catch(error => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+export {
+  buildMarketWideValueResearch,
+  buildRollingResearchPool,
+  futureMarketCapSpace,
+  growthPotentialScore,
+  valuationSafetyScore
+};

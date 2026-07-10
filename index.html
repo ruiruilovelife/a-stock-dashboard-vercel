@@ -70,6 +70,24 @@
       font-size: 12px;
       margin: 2px;
     }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 7px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .status-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+    .status-chip.deep::before { background: var(--green); }
+    .status-chip.reasonable::before { background: #d3a42f; }
+    .status-chip.trap::before { background: var(--red); }
+    .stars { color: var(--amber); white-space: nowrap; letter-spacing: 0; }
+    .score-stack { min-width: 94px; }
+    .score-stack b { font-size: 16px; }
     .subtabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .subtab {
       display: inline-flex;
@@ -229,6 +247,23 @@
       return n > 0 ? "red" : n < 0 ? "green" : "";
     }
 
+    function scoreToFive(value, max) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || !Number.isFinite(Number(max)) || Number(max) <= 0) return 0;
+      return Math.max(0, Math.min(5, Math.round((n / Number(max)) * 5)));
+    }
+
+    function stars(value) {
+      const n = Math.max(0, Math.min(5, Number(value) || 0));
+      return `<span class="stars">${"★".repeat(n)}${"☆".repeat(5 - n)}</span>`;
+    }
+
+    function valueStatusClass(status) {
+      if (status === "深度低估") return "deep";
+      if (status === "低估陷阱风险") return "trap";
+      return "reasonable";
+    }
+
     function card(title, body) {
       return `<div class="card"><h2>${title}</h2>${body}</div>`;
     }
@@ -329,9 +364,9 @@
             </tbody></table>
           </div>
           <div class="section card dense">
-            <h2>全市场估值质量观察</h2>
-            <table><thead><tr><th>排序</th><th>股票</th><th>评分</th><th>硬指标</th><th>为什么看</th><th>动作</th></tr></thead><tbody>
-              ${oversoldValueIdeas.slice(0, 5).map((x, i) => `<tr><td>${i + 1}</td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td><b>${x.score}/10</b><br>${x.phase}</td><td>PE:${x.peTtm ?? x.pe ?? "待取数"} PB:${x.pb ?? "待取数"}<br><span class="muted">市值:${x.marketCapYi ?? "待取数"}亿 换手:${x.turnover ?? "待取数"}%</span></td><td>${x.logic}<br><span class="muted">${x.keyCheck}</span></td><td>${x.action}</td></tr>`).join("")}
+            <h2>成长价值发现</h2>
+            <table><thead><tr><th>排序</th><th>股票</th><th>综合评分</th><th>估值/成长/产业</th><th>未来市值空间</th><th>状态与风险</th></tr></thead><tbody>
+              ${oversoldValueIdeas.slice(0, 5).map((x, i) => `<tr><td>${i + 1}</td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td><b>${x.compositeScore != null ? `${x.compositeScore}/100` : "等待新模型"}</b><br>${x.compositeScore != null ? (x.phase || "-") : "旧评分已停用"}</td><td>估值${x.valuationScore ?? "-"}/25 成长${x.growthScore ?? "-"}/30<br>产业${x.industryScore ?? "-"}/25 壁垒${x.moatScore ?? "-"}/15</td><td>${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿 → ${x.targetMcapYi ?? "待验证"}亿<br>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "-"}</td><td><span class="status-chip ${valueStatusClass(x.investmentStatus)}">${x.compositeScore != null ? (x.investmentStatus || "待验证") : "等待新模型"}</span><br>${x.maximumRisk || x.risk || "-"}</td></tr>`).join("")}
             </tbody></table>
           </div>
           <div class="section card dense">
@@ -823,51 +858,79 @@
       if (id === "value") {
         const ideas = state.oversoldValueIdeas || [];
         const trackedValue = state.trackedValueIdeas || [];
+        const traps = state.valueTrapCandidates || [];
+        const valueModel = state.valueQualityModel || {};
         html = `
           <div class="card notice dense">
-            <h2>全市场估值质量扫描</h2>
-            <p><b>定位：</b>这页优先看硬指标，不再主要看跌幅。底层先扫全A快照，按PE、PB、市值、换手、成交额承接等指标初筛，再要求补查ROE、现金流、利润趋势和行业位置。</p>
+            <h2>AI产业时代的成长价值发现系统</h2>
+            <p><b>定位：</b>寻找市场尚未正确估值的未来资产。低PE/PB只占25分；成长潜力30分、产业价值25分、竞争壁垒15分，技术位置仅占5分并且只用于判断买点。</p>
             <p><b>扫描范围：</b>${state.meta?.scanScope || "等待全市场扫描结果"}。</p>
-            <p><b>数据边界：</b>当前自动硬指标已包含PE、PB、市值、换手、成交额；ROE、经营现金流、利润趋势和估值分位还需要后续接入财务数据，不会在未取数时冒充已验证。</p>
-            <p><b>买点：</b>低PE/PB只是入门，不等于可以买。必须确认利润没有继续恶化、现金流可靠、行业不是永久下行，再等技术止跌。</p>
+            <p><b>财务覆盖：</b>${state.meta?.valueQualityDataCoverage || valueModel.financialSource || "财务数据等待更新"}。缺失指标显示“待验证”，不会用默认高分补齐。</p>
+            <p><b>核心判断：</b>先看产业空间和未来三年盈利，再判断当前估值是否提供安全边际；技术形态只决定何时买，不决定公司值不值得长期研究。</p>
+          </div>
+          <div class="section grid3">
+            ${card("估值安全 25分", "<p>PE、PB、PS、EV/EBITDA及行业相对折价。便宜是安全垫，不是核心增长来源。</p>")}
+            ${card("成长潜力 30分", "<p>近3年营收/利润CAGR、利润弹性、ROE趋势和毛利率趋势。收入温和增长但利润快速增长会加分。</p>")}
+            ${card("产业价值 25分", "<p>S级优先AI、半导体、机器人、高端制造和国产替代；传统行业只有在成长和估值都成立时入选。</p>")}
+            ${card("竞争壁垒 15分", "<p>全球领先、国内第一、细分前三、客户/技术壁垒。没有行业排名依据时只给保守分并标注待核验。</p>")}
+            ${card("技术位置 5分", "<p>成交承接和位置只用于分批买点，不用K线替代公司价值。</p>")}
+            ${card("投资状态", "<p><span class='status-chip deep'>深度低估</span> <span class='status-chip reasonable'>合理低估</span> <span class='status-chip trap'>低估陷阱风险</span></p>")}
           </div>
           <div class="section card">
-            <h2>当前估值质量观察名单</h2>
-            <table><thead><tr><th>排序</th><th>股票</th><th>方向</th><th>评分/阶段</th><th>硬指标</th><th>市场数据</th><th>验证重点</th><th>动作</th><th>风险</th></tr></thead><tbody>
-              ${ideas.map((x, i) => `<tr>
-                <td>${i + 1}</td>
+            <h2>成长价值候选</h2>
+            <div class="table-scroll"><table class="compact-table" style="min-width:1680px"><thead><tr><th>股票</th><th>综合评分</th><th>估值</th><th>成长</th><th>产业</th><th>护城河</th><th>未来市值空间</th><th>周期位置</th><th>催化剂</th><th>最大风险</th></tr></thead><tbody>
+              ${ideas.length ? ideas.map(x => {
+                const composite = x.compositeScore != null ? Number(x.compositeScore) : NaN;
+                const status = x.compositeScore != null ? (x.investmentStatus || "合理低估") : "等待新模型";
+                const valuationScore = x.valuationScore ?? "-";
+                const growthScore = x.growthScore ?? "-";
+                const industryScore = x.industryScore ?? "-";
+                const moatScore = x.moatScore ?? "-";
+                return `<tr>
+                  <td><b>${x.name}</b><br><span class="muted">${x.code}</span><br><span class="status-chip ${valueStatusClass(status)}">${status}</span></td>
+                  <td class="score-stack"><b>${Number.isFinite(composite) ? `${composite.toFixed(1)}/100` : "等待新模型"}</b><br>${Number.isFinite(composite) ? (x.phase || "-") : "旧10分制已停用"}<br><span class="muted">技术买点 ${x.technicalScore ?? "-"}/5</span></td>
+                  <td><b>${valuationScore}/25</b><br>${stars(scoreToFive(valuationScore, 25))}<br>PE:${x.peTtm ?? x.pe ?? "待验证"} PB:${x.pb ?? "待验证"}<br>PS:${x.ps ?? "待验证"} EV/EBITDA:${x.evEbitda ?? "待验证"}</td>
+                  <td><b>${growthScore}/30</b><br>${stars(scoreToFive(growthScore, 30))}<br>营收CAGR:${fmtPct(x.growth?.revenueCagr3Y)}<br>利润CAGR:${fmtPct(x.growth?.profitCagr3Y)}<br>ROE趋势:${fmtPct(x.growth?.roeTrend)}</td>
+                  <td><b>${industryScore}/25</b><br>${stars(scoreToFive(industryScore, 25))}<br>${x.theme || x.industryLabel || "待分类"}<br><span class="muted">${x.industryChain || "细分位置待核验"}</span></td>
+                  <td><b>${moatScore}/15</b><br>${stars(scoreToFive(moatScore, 15))}<br>${x.moat?.read || "行业排名待核验"}</td>
+                  <td>当前：${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿<br>合理情景：${x.targetMcapYi ?? "待验证"}亿<br><b>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "待验证"}</b> ${stars(x.potentialStars || 0)}<br><span class="muted">${x.targetMethod || "-"}</span></td>
+                  <td>${x.cyclePosition || "待验证"}<br><span class="${pctClass(x.dayPct)}">今日 ${fmtPct(x.dayPct)}</span><br><span class="muted">成交 ${x.amount || "-"}</span></td>
+                  <td>${x.catalyst || "下一份财报与订单验证"}<br><span class="muted">${x.keyCheck || "-"}</span></td>
+                  <td><b>陷阱指数 ${x.valueTrapIndex ?? "-"}/100</b><br>${(x.valueTrapReasons || []).join("；") || x.maximumRisk || x.risk || "-"}<br><span class="muted">${x.action || "-"}</span></td>
+                </tr>`;
+              }).join("") : `<tr><td colspan="10">本次没有达到展示门槛的公司。等待财务数据覆盖后重新全市场评分，不用低PE名单填空。</td></tr>`}
+            </tbody></table></div>
+          </div>
+          <div class="section card risk">
+            <h2>低估陷阱检测</h2>
+            <p class="muted">以下公司可能看起来便宜，但收入、利润、毛利率、ROE或经营现金流存在恶化信号。陷阱指数越高，越不能只看PE/PB抄底。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>估值安全</th><th>陷阱指数</th><th>量化原因</th><th>产业/周期</th><th>结论</th></tr></thead><tbody>
+              ${traps.length ? traps.map(x => `<tr>
                 <td><b>${x.name}</b><br><span class="muted">${x.code}</span></td>
-                <td>${x.theme || "-"}</td>
-                <td><b>${x.score}/10</b><br>${x.phase}</td>
-                <td>PE:${x.peTtm ?? x.pe ?? "待取数"}<br>PB:${x.pb ?? "待取数"}<br><span class="muted">市值:${x.marketCapYi ?? "待取数"}亿</span></td>
-                <td><span class="${pctClass(x.dayPct)}">今日：${fmtPct(x.dayPct)}</span><br><span class="muted">换手：${x.turnover ?? "待取数"}%</span><br><span class="muted">成交：${x.amount || "-"}</span></td>
-                <td>${x.keyCheck || "-"}</td>
-                <td>${x.action || "-"}</td>
-                <td>${x.risk || "-"}</td>
-              </tr>`).join("")}
-            </tbody></table>
+                <td>${x.valuationScore ?? "-"}/25<br>PE:${x.pe ?? "-"} PB:${x.pb ?? "-"}</td>
+                <td><b class="${Number(x.valueTrapIndex) >= 60 ? "red" : "amber"}">${x.valueTrapIndex ?? "-"}/100</b><br>${x.valueTrapRisk || "待验证"}</td>
+                <td>${(x.valueTrapReasons || []).join("；") || "-"}</td>
+                <td>${x.theme || "-"}<br><span class="muted">${x.cyclePosition || "-"}</span></td>
+                <td>${x.action || "暂不参与，等待基本面改善。"}</td>
+              </tr>`).join("") : `<tr><td colspan="6">当前没有完成量化确认的高风险低估陷阱；数据不足不等于安全。</td></tr>`}
+            </tbody></table></div>
           </div>
           <div class="section card">
-            <h2>估值质量 1个月滚动池（最多100只）</h2>
-            <p class="muted">评分不低于 5 分进入跟踪；重复入选会延长跟踪期。累计涨跌从首次入选价开始算，用来检验低估修复是否真正兑现。</p>
-            <table><thead><tr><th>股票</th><th>评分/阶段</th><th>首次入选</th><th>最近入选</th><th>入选价/现价</th><th>今日涨跌</th><th>累计涨跌</th><th>硬指标</th><th>状态</th></tr></thead><tbody>
+            <h2>成长价值 1个月滚动池（最多100只）</h2>
+            <p class="muted">综合评分达到70分且未判定为高风险陷阱才进入；重复入选会延长跟踪期。累计涨跌从首次入选价开始计算，与持仓成本无关。</p>
+            <div class="table-scroll"><table><thead><tr><th>股票</th><th>综合评分/状态</th><th>首次入选</th><th>最近入选</th><th>入选价/现价</th><th>今日涨跌</th><th>累计涨跌</th><th>未来空间</th><th>状态</th></tr></thead><tbody>
               ${trackedValue.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
-                <td><b>${t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "-"}</span></td>
+                <td><b>${t.compositeScore != null ? `${t.compositeScore}/100` : "等待新模型"}</b><br><span class="status-chip ${valueStatusClass(t.investmentStatus)}">${t.compositeScore != null ? (t.investmentStatus || t.phase || "待验证") : "旧评分停用"}</span></td>
                 <td>${t.firstTrackedDate || "-"}</td>
                 <td>${t.lastSelectedDate || "-"}</td>
                 <td>${t.entryPrice ?? "-"}<br>${t.currentPrice ?? "-"}</td>
                 <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}</td>
                 <td class="${pctClass(t.returnPct)}">${fmtPct(t.returnPct)}</td>
-                <td>PE:${t.peTtm ?? t.pe ?? "-"} PB:${t.pb ?? "-"}<br><span class="muted">市值:${t.marketCapYi ?? "-"}亿</span></td>
+                <td>${t.targetMcapYi ?? "待验证"}亿<br>${t.upsideMultiple ? `${t.upsideMultiple}倍` : "-"} ${stars(t.potentialStars || 0)}</td>
                 <td>${t.status || "-"}</td>
               </tr>`).join("")}
-            </tbody></table>
-          </div>
-          <div class="section grid3">
-            ${card("什么才算低估", "<p>PE/PB处在合理低位，同时ROE、现金流、分红或利润趋势不能明显恶化。</p>")}
-            ${card("不能买的便宜", "<p>低PE可能是利润即将下修，低PB可能是资产质量差。没有ROE和现金流支撑，就是价值陷阱。</p>")}
-            ${card("和5倍股模型的区别", "<p>5倍股模型找进攻弹性，超跌低估模型找修复赔率。前者看主升，后者看止跌和预期差。</p>")}
+            </tbody></table></div>
           </div>
         `;
       }

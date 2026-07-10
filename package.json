@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "update": "node scripts/update-dashboard.mjs"
+    "update": "node scripts/update-dashboard.mjs",
+    "test:value": "node scripts/test-value-quality.mjs"
   }
 }
