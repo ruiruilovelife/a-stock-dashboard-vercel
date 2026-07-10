@@ -75,7 +75,7 @@ const TRACKED_EXTRA_CNINFO = {
   "603444": "gssh0603444"
 };
 
-const IMPORTANT_ANNOUNCEMENT_RE = /业绩预告|业绩快报|半年度报告|季度报告|年度报告|减持|增持|回购|重大合同|订单|中标|投资|收购|问询|监管|风险提示|诉讼|仲裁|停牌|复牌|限售|解除限售|分红|利润分配/;
+const IMPORTANT_ANNOUNCEMENT_RE = /业绩预告|业绩快报|预增|预盈|预亏|扭亏|中报|半年报|半年度报告|季度报告|年度报告|业绩说明会|减持|增持|回购|重大合同|订单|中标|投资|收购|问询|监管|风险提示|诉讼|仲裁|停牌|复牌|限售|解除限售|分红|利润分配/;
 
 const INDICES = [
   ["sh000001", "上证指数"],
@@ -462,6 +462,18 @@ function recentDateRange(days = 7) {
   return `${fmt(start)}~${fmt(end)}`;
 }
 
+function parseJsonOrJsonp(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return {};
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed);
+  const jsonp = trimmed.match(/^[\w$.]+\(([\s\S]*)\);?$/);
+  if (jsonp) return JSON.parse(jsonp[1]);
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first >= 0 && last > first) return JSON.parse(trimmed.slice(first, last + 1));
+  throw new Error("公告接口返回内容不是JSON");
+}
+
 async function fetchCninfoAnnouncementsForStock(stock) {
   const symbol = stock.symbol || stock[0] || symbolFromCode(stock.code || stock[2]);
   const name = stock.name || stock[1];
@@ -535,6 +547,187 @@ async function fetchCninfoAnnouncementsForStock(stock) {
   };
 }
 
+async function fetchSseAnnouncementsForStock(stock) {
+  const symbol = stock.symbol || stock[0] || symbolFromCode(stock.code || stock[2]);
+  const name = stock.name || stock[1];
+  const code = stock.code || stock[2];
+  const priority = stock.priority || "P2";
+  if (!String(code).startsWith("6")) {
+    return {
+      stock: { symbol, name, code, priority },
+      rawCount: null,
+      importantCount: 0,
+      announcements: [],
+      warning: "非沪市股票，不适用上交所披露接口。"
+    };
+  }
+  const [beginDate, endDate] = recentDateRange(14).split("~");
+  const params = new URLSearchParams({
+    jsonCallBack: "",
+    isPagination: "true",
+    productId: code,
+    keyWord: "",
+    securityType: "0101,120100,020100,020200,120200",
+    reportType2: "",
+    reportType: "ALL",
+    beginDate,
+    endDate,
+    "pageHelp.pageSize": "50",
+    "pageHelp.pageNo": "1",
+    "pageHelp.beginPage": "1",
+    "pageHelp.cacheSize": "1",
+    "pageHelp.endPage": "5"
+  });
+  const res = await fetch(`https://query.sse.com.cn/security/stock/queryCompanyBulletin.do?${params.toString()}`, {
+    method: "GET",
+    signal: AbortSignal.timeout(18000),
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: "https://www.sse.com.cn/disclosure/listedinfo/announcement/"
+    }
+  });
+  if (!res.ok) throw new Error(`SSE ${code} failed: ${res.status}`);
+  const text = await res.text();
+  const json = parseJsonOrJsonp(text);
+  const allAnnouncements = json.result || [];
+  const announcements = allAnnouncements
+    .filter(item => IMPORTANT_ANNOUNCEMENT_RE.test(item.TITLE || item.title || ""))
+    .map(item => {
+      const title = item.TITLE || item.title || "";
+      const url = item.URL || item.url || item.BULLETIN_URL || "";
+      return {
+        date: item.SSEDATE || item.BULLETIN_YEAR || item.createTime || dateOnlyChina(),
+        source: "上交所",
+        name,
+        code,
+        priority,
+        title,
+        type: inferAnnouncementType(title),
+        importance: inferAnnouncementImportance(title),
+        url: url.startsWith("http") ? url : `https://www.sse.com.cn${url}`,
+        facts: [],
+        analystRead: "上交所披露端已捕捉，沪市持仓公告必须与巨潮交叉核对；业绩相关公告优先读原文。",
+        action: "列为持仓硬事件，先读原文，再结合股价承接、板块资金和财报质量决定加减仓。",
+        trigger: "公告利好且价格/成交/板块同步确认。",
+        fail: "公告利好兑现但高开低走、放量长上影，或公告质量存在低基数/一次性/现金流风险。"
+      };
+    });
+  return {
+    stock: { symbol, name, code, priority },
+    rawCount: allAnnouncements.length,
+    importantCount: announcements.length,
+    announcements,
+    warning: ""
+  };
+}
+
+async function fetchSzseAnnouncementsForStock(stock) {
+  const symbol = stock.symbol || stock[0] || symbolFromCode(stock.code || stock[2]);
+  const name = stock.name || stock[1];
+  const code = stock.code || stock[2];
+  const priority = stock.priority || "P2";
+  if (String(code).startsWith("6")) {
+    return {
+      stock: { symbol, name, code, priority },
+      rawCount: null,
+      importantCount: 0,
+      announcements: [],
+      warning: "沪市股票，不适用深交所披露接口。"
+    };
+  }
+  const [beginDate, endDate] = recentDateRange(14).split("~");
+  const params = new URLSearchParams({
+    random: String(Date.now()),
+    "seDate[0]": beginDate,
+    "seDate[1]": endDate,
+    channelCode: "listedNotice_disc",
+    stock: code,
+    pageSize: "50",
+    pageNum: "1"
+  });
+  const res = await fetch(`https://www.szse.cn/api/disc/announcement/annList?${params.toString()}`, {
+    method: "GET",
+    signal: AbortSignal.timeout(18000),
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: "https://www.szse.cn/disclosure/listed/notice/index.html"
+    }
+  });
+  if (!res.ok) throw new Error(`SZSE ${code} failed: ${res.status}`);
+  const json = await res.json();
+  const allAnnouncements = json.data || [];
+  const announcements = allAnnouncements
+    .filter(item => IMPORTANT_ANNOUNCEMENT_RE.test(item.title || item.announcementTitle || ""))
+    .map(item => {
+      const title = item.title || item.announcementTitle || "";
+      const url = item.attachPath || item.url || item.pdfUrl || "";
+      return {
+        date: item.publishTime || item.publishDate || item.date || dateOnlyChina(),
+        source: "深交所",
+        name,
+        code,
+        priority,
+        title,
+        type: inferAnnouncementType(title),
+        importance: inferAnnouncementImportance(title),
+        url: url.startsWith("http") ? url : `https://disc.static.szse.cn/download${url}`,
+        facts: [],
+        analystRead: "深交所披露端已捕捉，深市/创业板持仓公告必须与巨潮交叉核对；业绩相关公告优先读原文。",
+        action: "列为持仓硬事件，先读原文，再结合股价承接、板块资金和财报质量决定加减仓。",
+        trigger: "公告利好且价格/成交/板块同步确认。",
+        fail: "公告利好兑现但高开低走、放量长上影，或公告质量存在低基数/一次性/现金流风险。"
+      };
+    });
+  return {
+    stock: { symbol, name, code, priority },
+    rawCount: allAnnouncements.length,
+    importantCount: announcements.length,
+    announcements,
+    warning: ""
+  };
+}
+
+async function fetchAnnouncementsForStock(stock) {
+  const sources = [
+    fetchCninfoAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "巨潮资讯" }))
+  ];
+  if (String(stock.code || "").startsWith("6")) {
+    sources.push(fetchSseAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "上交所" })));
+  } else {
+    sources.push(fetchSzseAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "深交所" })));
+  }
+  const results = await Promise.allSettled(sources);
+  const announcements = [];
+  const latestTitles = [];
+  let rawCount = 0;
+  let importantCount = 0;
+  const sourceStatus = [];
+  const warnings = [];
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const value = result.value;
+      announcements.push(...value.announcements);
+      latestTitles.push(...value.announcements.slice(0, 3).map(item => `${item.date} ${item.source} ${item.title}`));
+      if (Number.isFinite(Number(value.rawCount))) rawCount += Number(value.rawCount);
+      importantCount += Number(value.importantCount || 0);
+      sourceStatus.push(`${value.sourceName}:OK`);
+      if (value.warning) warnings.push(`${value.sourceName}:${value.warning}`);
+    } else {
+      warnings.push(result.reason?.message || String(result.reason || "未知错误"));
+    }
+  }
+  return {
+    stock,
+    announcements,
+    rawCount,
+    importantCount,
+    latestTitles,
+    status: warnings.length ? "部分源未完整覆盖" : "已查询公告源",
+    source: sourceStatus.join(" / ") || "公告源",
+    warning: warnings.join("；")
+  };
+}
+
 function symbolFromCode(code = "") {
   if (String(code).startsWith("6")) return `sh${code}`;
   return `sz${code}`;
@@ -592,7 +785,7 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
   const currentHoldingCodes = new Set(STOCKS.map(stock => stock[2]));
   const fetched = [];
   const coverage = [];
-  const results = await Promise.allSettled(stocks.map(stock => fetchCninfoAnnouncementsForStock(stock)));
+  const results = await Promise.allSettled(stocks.map(stock => fetchAnnouncementsForStock(stock)));
   for (let i = 0; i < results.length; i += 1) {
     const result = results[i];
     const stock = stocks[i];
@@ -602,13 +795,13 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
         name: result.value.stock.name,
         code: result.value.stock.code,
         priority: result.value.stock.priority,
-        status: result.value.warning ? "未完整覆盖" : "已查询巨潮",
-        source: "巨潮资讯",
-        checkedRange: "最近10天",
+        status: result.value.status,
+        source: result.value.source,
+        checkedRange: "最近14天",
         rawCount: result.value.rawCount,
         importantCount: result.value.importantCount,
-        latestTitles: result.value.announcements.slice(0, 3).map(item => `${item.date} ${item.title}`),
-        risk: result.value.warning || (result.value.importantCount ? "有重要公告，必须逐条读原文并映射仓位。" : "最近10天巨潮未筛出重大公告；仍需结合交易所、财联社、同花顺异动和公司新闻复核。")
+        latestTitles: result.value.latestTitles.slice(0, 5),
+        risk: result.value.warning || (result.value.importantCount ? "有重要公告，必须逐条读原文并映射仓位。" : "最近14天公告源未筛出重大公告；仍需结合财联社、同花顺异动、公司新闻和行业政策复核。")
       });
     } else {
       const message = result.reason?.message || result.reason || "未知错误";
@@ -619,11 +812,11 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
         priority: stock.priority,
         status: "查询失败",
         source: "巨潮资讯",
-        checkedRange: "最近10天",
+        checkedRange: "最近14天",
         rawCount: null,
         importantCount: null,
         latestTitles: [],
-        risk: `公告源查询失败：${message}。不能当作没有公告，必须人工复核。`
+        risk: `公告源查询失败：${message}。不能当作没有公告，必须人工复核交易所网页、巨潮、公司官网和新闻源。`
       });
     }
   }
@@ -635,10 +828,12 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
   for (const item of HOLDING_HARD_EVENTS) {
     const row = coverage.find(x => x.code === item.code);
     if (row && !row.latestTitles.includes(`${item.date} ${item.title}`)) {
-      row.status = row.status === "查询失败" ? "查询失败/手工补充" : "已查询巨潮/手工补充";
+      row.status = row.status === "查询失败" || String(row.status || "").includes("部分源")
+        ? `${row.status}/手工补充`
+        : "已查询公告源/手工补充";
       row.latestTitles = [`${item.date} ${item.title}`, ...row.latestTitles].slice(0, 3);
       row.importantCount = Number(row.importantCount || 0) + 1;
-      row.risk = "存在持仓硬事件，必须优先读原文；不能用泛泛板块判断替代。";
+      row.risk = `${row.risk || ""}；存在持仓硬事件，必须优先读原文，不能用泛泛板块判断替代。`;
     }
   }
   const events = Array.from(manualByKey.values())
