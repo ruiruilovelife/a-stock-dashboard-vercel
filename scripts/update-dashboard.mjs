@@ -689,31 +689,33 @@ async function fetchSzseAnnouncementsForStock(stock) {
 
 async function fetchAnnouncementsForStock(stock) {
   const sources = [
-    fetchCninfoAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "巨潮资讯" }))
+    { name: "巨潮资讯", task: fetchCninfoAnnouncementsForStock(stock) }
   ];
   if (String(stock.code || "").startsWith("6")) {
-    sources.push(fetchSseAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "上交所" })));
+    sources.push({ name: "上交所", task: fetchSseAnnouncementsForStock(stock) });
   } else {
-    sources.push(fetchSzseAnnouncementsForStock(stock).then(result => ({ ...result, sourceName: "深交所" })));
+    sources.push({ name: "深交所", task: fetchSzseAnnouncementsForStock(stock) });
   }
-  const results = await Promise.allSettled(sources);
+  const results = await Promise.allSettled(sources.map(source => source.task));
   const announcements = [];
   const latestTitles = [];
   let rawCount = 0;
   let importantCount = 0;
   const sourceStatus = [];
   const warnings = [];
-  for (const result of results) {
+  for (let i = 0; i < results.length; i += 1) {
+    const sourceName = sources[i]?.name || "公告源";
+    const result = results[i];
     if (result.status === "fulfilled") {
       const value = result.value;
       announcements.push(...value.announcements);
       latestTitles.push(...value.announcements.slice(0, 3).map(item => `${item.date} ${item.source} ${item.title}`));
       if (Number.isFinite(Number(value.rawCount))) rawCount += Number(value.rawCount);
       importantCount += Number(value.importantCount || 0);
-      sourceStatus.push(`${value.sourceName}:OK`);
-      if (value.warning) warnings.push(`${value.sourceName}:${value.warning}`);
+      sourceStatus.push(`${sourceName}:OK`);
+      if (value.warning) warnings.push(`${sourceName}:${value.warning}`);
     } else {
-      warnings.push(result.reason?.message || String(result.reason || "未知错误"));
+      warnings.push(`${sourceName}:${result.reason?.message || String(result.reason || "未知错误")}`);
     }
   }
   return {
