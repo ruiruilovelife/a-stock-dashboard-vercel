@@ -425,6 +425,7 @@
         const newsSources = macro.newsSources || [];
         const researchRadarTasks = macro.researchRadarTasks || [];
         const announcementCoverage = macro.announcementCoverage || [];
+        const publicNewsCandidates = macro.publicNewsCandidates || [];
         html = `
           <div class="grid3">
             ${card("财联社/快讯口径", "<p>新闻必须映射到股价：科技线大跌时，利好公告也可能被资金兑现。</p>")}
@@ -439,6 +440,11 @@
           <div class="section card risk dense"><h2>持仓公告覆盖核对</h2>
             <table><thead><tr><th>股票</th><th>状态</th><th>查询范围</th><th>公告数</th><th>最新重要标题</th><th>风险提示</th></tr></thead><tbody>
               ${announcementCoverage.map(x => `<tr><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td><b>${x.status || "-"}</b><br><span class="muted">${x.source || ""}</span></td><td>${x.checkedRange || "-"}</td><td>${x.rawCount ?? "-"} / ${x.importantCount ?? "-"}</td><td>${(x.latestTitles || []).map(t => `<p>${t}</p>`).join("") || "最近10天未筛出重大公告"}</td><td>${x.risk || "-"}</td></tr>`).join("")}
+            </tbody></table>
+          </div>
+          <div class="section card dense"><h2>公开搜索候选线索</h2>
+            <table><thead><tr><th>优先级</th><th>股票</th><th>来源</th><th>标题/摘要</th><th>状态</th></tr></thead><tbody>
+              ${publicNewsCandidates.slice(0, 60).map(x => `<tr><td><b>${x.priority || "-"}</b><br><span class="muted">${x.bucket || ""}</span></td><td><b>${x.name}</b><br><span class="muted">${x.code}</span></td><td>${x.source || "-"}<br><span class="muted">${x.query || ""}</span></td><td>${x.url ? `<a href="${x.url}" target="_blank" rel="noreferrer">${x.title || "-"}</a>` : x.title || "-"}<br><span class="muted">${x.snippet || ""}</span></td><td>${x.status || "待核验"}</td></tr>`).join("")}
             </tbody></table>
           </div>
           <div class="section card"><h2>新闻源矩阵</h2>

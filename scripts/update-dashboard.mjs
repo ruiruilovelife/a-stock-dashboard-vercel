@@ -474,6 +474,154 @@ function parseJsonOrJsonp(text) {
   throw new Error("公告接口返回内容不是JSON");
 }
 
+function stripHtml(text = "") {
+  return String(text)
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, "\"")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFinanceUrl(url = "") {
+  return /cninfo|sse\.com|szse\.cn|eastmoney|cls\.cn|10jqka|hexun|stcn|xueqiu|jrj|sina|finance|证券|财经/i.test(String(url));
+}
+
+function isRelevantSearchCandidate(stock, item) {
+  const haystack = `${item.title || ""} ${item.snippet || ""} ${item.url || ""}`.toLowerCase();
+  const name = String(stock.name || "").toLowerCase();
+  const code = String(stock.code || "").toLowerCase();
+  return haystack.includes(name) || haystack.includes(code) || isFinanceUrl(item.url);
+}
+
+function stockSearchUniverse(previous = {}, dailyCandidates = [], fiveXIdeas = [], valueIdeas = []) {
+  const map = new Map();
+  const add = (stock, priority, bucket) => {
+    if (!stock?.code || !stock?.name) return;
+    const existing = map.get(stock.code);
+    if (!existing) {
+      map.set(stock.code, {
+        symbol: stock.symbol || symbolFromCode(stock.code),
+        name: stock.name,
+        code: stock.code,
+        priority,
+        bucket
+      });
+      return;
+    }
+    const rank = { P0: 0, P1: 1, P2: 2 };
+    if ((rank[priority] ?? 9) < (rank[existing.priority] ?? 9)) {
+      existing.priority = priority;
+      existing.bucket = bucket;
+    }
+  };
+  for (const [symbol, name, code] of STOCKS) add({ symbol, name, code }, "P0", "当前持仓");
+  for (const [symbol, name, code, status] of TRADE_TRACKING_BASE) add({ symbol, name, code }, status === "当前持仓" ? "P0" : "P1", status);
+  for (const item of previous.tradeTracking || []) add(item, item.status === "当前持仓" ? "P0" : "P1", item.status || "我的跟踪池");
+  for (const item of previous.trackedCandidates || []) add(item, "P1", "强弹性滚动池");
+  for (const item of previous.trackedFiveXIdeas || []) add(item, "P1", "五倍股滚动池");
+  for (const item of previous.trackedValueIdeas || []) add(item, "P1", "估值质量滚动池");
+  for (const item of dailyCandidates || []) add(item, "P2", "今日强弹性候选");
+  for (const item of fiveXIdeas || []) add(item, "P2", "今日五倍股候选");
+  for (const item of valueIdeas || []) add(item, "P2", "今日估值质量候选");
+  return Array.from(map.values()).slice(0, 120);
+}
+
+async function fetchBingSearchCandidates(stock, query) {
+  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&cc=cn&setlang=zh-CN`;
+  const res = await fetch(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(16000),
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.5"
+    }
+  });
+  if (!res.ok) throw new Error(`Bing search failed: ${res.status}`);
+  const html = await res.text();
+  const blocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/g) || [];
+  return blocks.slice(0, 8).map(block => {
+    const titleMatch = block.match(/<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>\s*<\/h2>/i);
+    const snippetMatch = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    if (!titleMatch) return null;
+    const item = {
+      name: stock.name,
+      code: stock.code,
+      priority: stock.priority,
+      bucket: stock.bucket,
+      source: "Bing网页搜索",
+      query,
+      title: stripHtml(titleMatch[2]),
+      url: titleMatch[1],
+      snippet: stripHtml(snippetMatch?.[1] || ""),
+      status: "搜索候选，待公告源/新闻源核验"
+    };
+    return isRelevantSearchCandidate(stock, item) ? item : null;
+  }).filter(Boolean).slice(0, 3);
+}
+
+async function fetchPublicNewsCandidates(previous = {}, dailyCandidates = [], fiveXIdeas = [], valueIdeas = []) {
+  const universe = stockSearchUniverse(previous, dailyCandidates, fiveXIdeas, valueIdeas);
+  const targets = [
+    ...universe.filter(stock => stock.priority === "P0"),
+    ...universe.filter(stock => stock.priority === "P1").slice(0, 35),
+    ...universe.filter(stock => stock.priority === "P2").slice(0, 20)
+  ];
+  const queries = targets.map(stock => ({
+    stock,
+    query: `${stock.name} ${stock.code} 公告 业绩 预告 财联社 同花顺`
+  }));
+  const results = [];
+  for (const item of queries) {
+    try {
+      const candidates = await fetchBingSearchCandidates(item.stock, item.query);
+      if (candidates.length) {
+        results.push(...candidates);
+      } else {
+        results.push({
+          name: item.stock.name,
+          code: item.stock.code,
+          priority: item.stock.priority,
+          bucket: item.stock.bucket,
+          source: "Bing网页搜索",
+          query: item.query,
+          title: "未筛出可靠财经候选",
+          url: "",
+          snippet: "搜索返回结果未包含股票名/代码或可信财经域名，已过滤；不能据此判断无新闻。",
+          status: "搜索源质量不足，需公告源/新闻源继续核验"
+        });
+      }
+      await new Promise(resolve => setTimeout(resolve, 350));
+    } catch (error) {
+      results.push({
+        name: item.stock.name,
+        code: item.stock.code,
+        priority: item.stock.priority,
+        bucket: item.stock.bucket,
+        source: "公开搜索",
+        query: item.query,
+        title: "搜索失败",
+        url: "",
+        snippet: error.message,
+        status: "搜索源未完整覆盖，不能当作无新闻"
+      });
+    }
+  }
+  const seen = new Set();
+  return results.filter(item => {
+    const key = `${item.code}-${item.title}-${item.url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 180);
+}
+
 async function fetchCninfoAnnouncementsForStock(stock) {
   const symbol = stock.symbol || stock[0] || symbolFromCode(stock.code || stock[2]);
   const name = stock.name || stock[1];
@@ -687,9 +835,63 @@ async function fetchSzseAnnouncementsForStock(stock) {
   };
 }
 
+function eastmoneyAnnStockCode(code = "") {
+  if (String(code).startsWith("6")) return `${code}.SH`;
+  return `${code}.SZ`;
+}
+
+async function fetchEastmoneyAnnouncementsForStock(stock) {
+  const symbol = stock.symbol || stock[0] || symbolFromCode(stock.code || stock[2]);
+  const name = stock.name || stock[1];
+  const code = stock.code || stock[2];
+  const priority = stock.priority || "P2";
+  const url = `https://np-anotice-stock.eastmoney.com/api/security/ann?sr=-1&page_size=30&page_index=1&ann_type=A&client_source=web&stock_list=${encodeURIComponent(eastmoneyAnnStockCode(code))}`;
+  const res = await fetch(url, {
+    method: "GET",
+    signal: AbortSignal.timeout(16000),
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: "https://data.eastmoney.com/notices/"
+    }
+  });
+  if (!res.ok) throw new Error(`Eastmoney announcement ${code} failed: ${res.status}`);
+  const json = await res.json();
+  const allAnnouncements = json.data?.list || [];
+  const announcements = allAnnouncements
+    .filter(item => IMPORTANT_ANNOUNCEMENT_RE.test(item.title || item.notice_title || ""))
+    .map(item => {
+      const title = item.title || item.notice_title || "";
+      const artCode = item.art_code || item.notice_id || "";
+      return {
+        date: String(item.notice_date || item.eiTime || item.display_time || dateOnlyChina()).slice(0, 10),
+        source: "东方财富公告",
+        name,
+        code,
+        priority,
+        title,
+        type: inferAnnouncementType(title),
+        importance: inferAnnouncementImportance(title),
+        url: artCode ? `https://data.eastmoney.com/notices/detail/${eastmoneyAnnStockCode(code)}/${artCode}.html` : "https://data.eastmoney.com/notices/",
+        facts: [],
+        analystRead: "东方财富公告备份源已捕捉，需与交易所/巨潮原文交叉核对。",
+        action: "列为公告候选硬事件，核验原文后再映射仓位动作。",
+        trigger: "公告内容与股价承接、板块资金同步确认。",
+        fail: "公告标题利好但原文质量不足、低基数、一次性收益或高开低走。"
+      };
+    });
+  return {
+    stock: { symbol, name, code, priority },
+    rawCount: allAnnouncements.length,
+    importantCount: announcements.length,
+    announcements,
+    warning: ""
+  };
+}
+
 async function fetchAnnouncementsForStock(stock) {
   const sources = [
-    { name: "巨潮资讯", task: fetchCninfoAnnouncementsForStock(stock) }
+    { name: "巨潮资讯", task: fetchCninfoAnnouncementsForStock(stock) },
+    { name: "东方财富公告", task: fetchEastmoneyAnnouncementsForStock(stock) }
   ];
   if (String(stock.code || "").startsWith("6")) {
     sources.push({ name: "上交所", task: fetchSseAnnouncementsForStock(stock) });
@@ -822,12 +1024,13 @@ async function fetchHoldingHardEvents(previous = {}, dailyCandidates = [], fiveX
       });
     }
   }
-  const manualByKey = new Map(HOLDING_HARD_EVENTS.map(item => [`${item.code}-${item.title}`, item]));
+  const baseManualEvents = HOLDING_HARD_EVENTS;
+  const manualByKey = new Map(baseManualEvents.map(item => [`${item.code}-${item.title}`, item]));
   for (const item of fetched) {
     const key = `${item.code}-${item.title}`;
     if (!manualByKey.has(key)) manualByKey.set(key, item);
   }
-  for (const item of HOLDING_HARD_EVENTS) {
+  for (const item of baseManualEvents) {
     const row = coverage.find(x => x.code === item.code);
     if (row && !row.latestTitles.includes(`${item.date} ${item.title}`)) {
       row.status = row.status === "查询失败" || String(row.status || "").includes("部分源")
@@ -3376,6 +3579,7 @@ function compactDashboardForModel(dashboard) {
     researchRadarTasks: dashboard.macro?.researchRadarTasks || [],
     holdingHardEvents: dashboard.macro?.holdingHardEvents || [],
     announcementCoverage: dashboard.macro?.announcementCoverage || [],
+    publicNewsCandidates: dashboard.macro?.publicNewsCandidates || [],
     earningsAnalystSummary: dashboard.macro?.earningsAnalystSummary || {},
     earningsActionIdeas: dashboard.macro?.earningsActionIdeas || [],
     earningsRadarPolicy: dashboard.macro?.earningsRadarPolicy || [],
@@ -3517,7 +3721,8 @@ async function buildModelAnalysis(dashboard, session) {
 11. 财报季必须高亮A股业绩超预期公司：净利润/扣非同比100%以上重点列出，300%以上或扭亏且利润体量明显更靠前；必须解释为什么指标变好、是否低基数/一次性、下一期能否延续。
 12. 必须关注海外指标公司财报和指引，包括但不限于英伟达、谷歌、苹果、特斯拉、SpaceX、微软、Meta、Amazon、美光、闪迪/西部数据、SK海力士、三星、台积电、ASML、博通、AMD；说明对A股AI服务器、PCB、光模块、半导体材料、存储、消费电子、新能源车、机器人/低空等方向的影响。
 13. 必须逐只检查当前持仓的 announcementCoverage 和 holdingHardEvents：已抓到的公告要映射到仓位动作；查询失败、未配置、未完整覆盖时必须明确写“未自动确认，需复核”，不能把抓不到写成没有新闻。
-14. 不要承诺收益，不要使用“必涨”等确定性表达。
+14. 必须检查 publicNewsCandidates：这是自动公开搜索层抓到的候选线索，覆盖当前持仓、我的跟踪池、滚动候选池。不要把搜索候选直接当事实；要判断哪些标题可能是公告/业绩/政策/订单/监管/财报线索，哪些只是噪音，并给出需要核验的来源。
+15. 不要承诺收益，不要使用“必涨”等确定性表达。
 返回JSON字段：
 {
   "summary": "100字内总判断",
@@ -3799,6 +4004,23 @@ async function main() {
   });
   const holdingHardEvents = holdingHardEventResult.events || [];
   const announcementCoverage = holdingHardEventResult.coverage || [];
+  const publicNewsCandidates = await fetchPublicNewsCandidates(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas).catch(error => {
+    console.warn(`public news search fallback: ${error.message}`);
+    return stockSearchUniverse(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas)
+      .slice(0, 60)
+      .map(stock => ({
+        name: stock.name,
+        code: stock.code,
+        priority: stock.priority,
+        bucket: stock.bucket,
+        source: "公开搜索",
+        query: `${stock.name} ${stock.code} 公告 业绩 预告 财联社 同花顺`,
+        title: "搜索层整体失败",
+        url: "",
+        snippet: error.message,
+        status: "搜索源未完整覆盖，不能当作无新闻"
+      }));
+  });
   const scanScopeText = marketWideSnapshot.length
     ? `估值质量扫描：${marketWideSource}${marketWideSnapshot.length}只；可操作池排除科创/北证`
     : hasPreviousFullMarketValue
@@ -3833,7 +4055,8 @@ async function main() {
       ...macro,
       session,
       holdingHardEvents,
-      announcementCoverage
+      announcementCoverage,
+      publicNewsCandidates
     },
     portfolio: {
       totalValue: "",
