@@ -2471,9 +2471,12 @@ function buildRollingResearchPool(previous, key, dailyItems, quoteRows, options 
     const selectedAge = item.lastSelectedDate ? daysBetween(item.lastSelectedDate, today) : 0;
     return {
       ...item,
+      entryDate: item.entryDate || item.firstTrackedDate || today,
       currentPrice,
+      lastPrice: currentPrice,
       dayPct,
       returnPct,
+      cumulativeReturn: returnPct,
       trackingDays,
       expiresInDays: Math.max(0, 30 - selectedAge),
       status: item.status || (returnPct >= 10 ? "跟踪后明显走强" : returnPct <= -8 ? "跟踪后走弱，降级复盘" : "继续跟踪")
