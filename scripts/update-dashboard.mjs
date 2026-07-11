@@ -3162,6 +3162,8 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       phase,
       performanceImproving,
       futureProfit5xPotential,
+      threeXSpaceQualified: Number(upsideMultiple) >= 3,
+      qualificationLevel: Number(upsideMultiple) >= 3 ? "70分以上且3倍空间达标" : "70分以上研究候选，空间待验证",
       lowAttention,
       growthContributionBreakdown: {
         revenueGrowth: Math.min(20, Number(item.financial?.revenue || 0) * 4),
@@ -3193,10 +3195,9 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
   const futureFiveXCandidates = all
     .filter(item => item.buyable)
     .filter(item => item.valuationRankingEligible)
-    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
+    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) >= 50 && Number(item.marketCapYi ?? item.currentMcapYi) <= 500)
     .filter(item => item.tier === "S" || item.tier === "A")
     .filter(item => item.totalScore >= 70)
-    .filter(item => Number(item.upsideMultiple) >= 3)
     .filter(item => item.performanceImproving)
     .slice(0, 12);
 
@@ -3224,7 +3225,6 @@ function isFiveXPoolEligible(item) {
     return marketCap >= 50
       && marketCap <= 500
       && (item.tier === "S" || item.tier === "A")
-      && Number(item.upsideMultiple) >= 3
       && item.performanceImproving
       && Number(item.fiveXPotentialIndex) >= 70;
   }
@@ -4733,7 +4733,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       futureCandidateRules: [
         "当前市值小于1000亿，正式五倍潜力池优先50-500亿。",
         "所属产业必须A级以上，S级优先：AI算力基础设施、半导体国产替代/材料/设备、人形机器人、工业自动化、低空经济、高端制造。",
-        "综合评分必须达到70分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
+        "综合评分达到70分可进入研究候选；未来空间大于3倍才标记为空间达标，同时要求最近业绩或利润率出现改善线索。",
         "必须能说清楚当前市场错误认知，不允许只写题材和K线。",
         "每只股票必须给出目标市值假设、未来催化、最大风险和失败信号。"
       ],
@@ -5222,7 +5222,7 @@ async function buildModelAnalysis(dashboard, session) {
 4. 早盘版指导上午，午间版指导下午，盘后版指导明天，周末版指导下周。
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
 6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
-7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于70的股票不要进入正式候选，只能普通观察。
+7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、公司行业前三或技术领先、利润未来3-5年有高增长可能、市场关注度未完全打满。fiveXPotentialIndex达到70可进入研究候选；统一估值空间达到3倍才可标记为空间达标，未达时必须明确提示，不能直接给买入结论。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
