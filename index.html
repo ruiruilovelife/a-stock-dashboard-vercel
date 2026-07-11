@@ -234,7 +234,7 @@
     };
 
     let state = fallbackData;
-    const VALUATION_REBUILDING = true;
+    const VALUATION_REBUILDING = false;
 
     function fmtPct(v) {
       if (v === null || v === undefined || v === "") return "-";
@@ -848,6 +848,8 @@
         const scoringDimensions = model.scoringDimensions || [];
         const futureRules = model.futureCandidateRules || [];
         const fiveXCandidates = state.futureFiveXCandidates || state.fiveXCandidates || [];
+        const growthResearch = state.futureGrowthUniverse || [];
+        const growthScan = state.futureGrowthScanStats || {};
         const davisDouble = state.davisDoubleCandidates || [];
         const trackedFiveX = state.trackedFiveXIdeas || [];
         html = `
@@ -855,6 +857,7 @@
             <h2>${model.title || "未来成长股发现系统"}</h2>
             <p><b>核心结论：</b>${model.conclusion || "先研究产业和公司，再用技术资金找买点。"}</p>
             <p><b>样本口径：</b>${model.sampleNote || "代表性样本用于提炼框架，不等于完整名单。"}</p>
+            <p><b>本次扫描：</b>${growthScan.scanned ?? "-"}只可买样本；成长研究保留${growthScan.growthResearchRetained ?? "-"}只；估值证据完整${growthScan.valuationReady ?? "-"}只；估值待补${growthScan.valuationPending ?? "-"}只。估值待补不会从成长排名删除。</p>
             <div class="subtabs">
               <a class="subtab" href="#future-five-x">未来5倍候选池</a>
               <a class="subtab" href="#davis-double">戴维斯双击</a>
@@ -870,7 +873,7 @@
           </div>
           <div class="section card dense" id="future-five-x">
             <h2>未来5倍候选池</h2>
-            <p class="muted">筛选硬条件：市值小于1000亿、产业A级以上、综合评分&gt;85、未来空间&gt;3倍、业绩或利润率有改善线索。这里不是预测明天涨跌，而是找未来产业赢家。</p>
+            <p class="muted">正式候选硬条件：市值50亿至500亿、产业A级以上、综合评分不低于70、三年中性空间不低于3倍、业绩或利润率改善。未满足估值证据的公司仍保留在下方成长研究排名。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>五维评分</th><th>市值空间</th><th>核心逻辑</th><th>未来催化</th><th>最大风险</th></tr></thead><tbody>
               ${fiveXCandidates.map(c => `<tr>
                 <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
@@ -880,7 +883,21 @@
                 <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}</td>
                 <td>${Array.isArray(c.investmentLogicCard?.futureCatalysts) ? c.investmentLogicCard.futureCatalysts.join("；") : c.futureCatalysts || "-"}</td>
                 <td>${c.investmentLogicCard?.maxRisk || c.risk || "-"}</td>
-              </tr>`).join("")}
+              </tr>`).join("") || `<tr><td colspan="7">本期没有同时满足“70分、三倍空间、财务改善和估值证据完整”的正式候选；这不等于删除成长样本，请看下方全市场成长研究排名。</td></tr>`}
+            </tbody></table></div>
+          </div>
+          <div class="section card dense">
+            <h2>全市场成长研究排名</h2>
+            <p class="muted">这里按产业趋势、公司竞争力、财务成长和技术资金排序。缺少未来盈利或产业份额证据时显示“估值待补”，继续研究但不编造目标价。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业/壁垒</th><th>成长评分</th><th>估值状态</th><th>核心逻辑</th><th>风险</th></tr></thead><tbody>
+              ${growthResearch.slice(0, 60).map(c => `<tr>
+                <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
+                <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
+                <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
+                <td>${c.valuationPending ? "估值待补，保留排名" : `${c.marketCapYi ?? "-"}亿 → ${c.targetMcapYi ?? "-"}亿；${c.upsideMultiple ?? "-"}倍`}</td>
+                <td>${c.coreLogic || c.fiveXRead || "-"}</td>
+                <td>${c.risk || "-"}</td>
+              </tr>`).join("") || `<tr><td colspan="6">本次全市场成长研究数据未生成。</td></tr>`}
             </tbody></table></div>
           </div>
           <div class="section card dense" id="davis-double">
@@ -899,7 +916,7 @@
           </div>
           <div class="section card dense" id="five-x-tracking">
             <h2>五倍潜力 1个月滚动池（最多100只）</h2>
-            <p class="muted">只跟踪五倍潜力指数不低于85分的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
+            <p class="muted">跟踪五倍潜力指数不低于70分的正式候选；历史样本不会仅因当前分数下降而自动删除。累计涨跌从首次入选价开始算。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>指数/阶段</th><th>入选/更新</th><th>价格</th><th>涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
               ${trackedFiveX.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
