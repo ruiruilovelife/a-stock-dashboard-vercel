@@ -44,16 +44,22 @@ function buildSystemDataHealth({ meta, marketRows, financialSummary, announcemen
 
 function valuationDistance(holding, research) {
   const price = numeric(holding.close);
+  const actionEligible = Boolean(research?.valuation?.actionEligible);
   const scenarios = research?.valuation?.scenarios || {};
-  const conservative = numeric(scenarios.conservative?.targetPrice);
-  const neutral = numeric(scenarios.neutral?.targetPrice);
-  const optimistic = numeric(scenarios.optimistic?.targetPrice);
+  const strategic = research?.valuation?.futureScenarios || {};
+  const conservative = actionEligible ? numeric(scenarios.conservative?.targetPrice) : null;
+  const neutral = actionEligible ? numeric(scenarios.neutral?.targetPrice) : null;
+  const optimistic = actionEligible ? numeric(scenarios.optimistic?.targetPrice) : null;
   const pctTo = target => price && target ? Number((((target - price) / price) * 100).toFixed(1)) : null;
   return {
     currentPrice: price,
     conservativeTargetPrice: conservative,
     neutralTargetPrice: neutral,
     optimisticTargetPrice: optimistic,
+    strategicNeutralTargetPrice: actionEligible ? numeric(strategic.neutral?.targetPrice) : null,
+    strategicOptimisticTargetPrice: actionEligible ? numeric(strategic.optimistic?.targetPrice) : null,
+    actionEligible,
+    note: actionEligible ? "未来盈利基数已确认" : research?.valuation?.actionInvalidReason || "未来盈利基数待确认",
     toConservativePct: pctTo(conservative),
     toNeutralPct: pctTo(neutral),
     toOptimisticPct: pctTo(optimistic)
@@ -66,6 +72,7 @@ function actionForHolding(holding, research, hardEvents = []) {
   const weight = numeric(String(holding.weight || "").replace("%", "")) || 0;
   const event = hardEvents.find(item => item.code === holding.code);
   const valuationValid = Boolean(research?.valuation?.valid);
+  const valuationActionEligible = Boolean(research?.valuation?.actionEligible);
   let action = "继续持有";
   let priority = "P3";
   const reasons = [];
@@ -80,6 +87,10 @@ function actionForHolding(holding, research, hardEvents = []) {
     action = "暂不操作";
     priority = "P1";
     reasons.push(...research.valuation.invalidReasons);
+  } else if (!valuationActionEligible) {
+    action = weight >= 30 ? "控制集中度" : "等待盈利预测";
+    priority = weight >= 30 ? "P1" : "P2";
+    reasons.push(research.valuation.actionInvalidReason || "未来盈利基数尚未独立确认，不用情景目标价指导买卖");
   } else if (distance.optimisticTargetPrice && distance.currentPrice >= distance.optimisticTargetPrice) {
     action = "减仓";
     priority = "P0";
@@ -130,7 +141,7 @@ function actionForHolding(holding, research, hardEvents = []) {
     reduceTriggers,
     validFor: "1-5个交易日或直至关键数据变化",
     generatedAt: research?.conclusion?.generatedAt || null,
-    confidence: confidenceLabel(valuationValid, Boolean(event), Boolean(research?.dataHealth?.market && !research.dataHealth.market.stale))
+    confidence: confidenceLabel(valuationValid && valuationActionEligible, Boolean(event), Boolean(research?.dataHealth?.market && !research.dataHealth.market.stale))
   };
 }
 

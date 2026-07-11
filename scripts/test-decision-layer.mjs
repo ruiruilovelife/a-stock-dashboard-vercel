@@ -25,11 +25,16 @@ const research = {
   },
   valuation: {
     valid: true,
+    actionEligible: true,
     confidence: "中",
     scenarios: {
       conservative: { targetPrice: 70 },
       neutral: { targetPrice: 95 },
       optimistic: { targetPrice: 120 }
+    },
+    futureScenarios: {
+      neutral: { targetPrice: 130 },
+      optimistic: { targetPrice: 165 }
     }
   },
   dataHealth: { market: { stale: false }, business: { source: "财报/公告" } },

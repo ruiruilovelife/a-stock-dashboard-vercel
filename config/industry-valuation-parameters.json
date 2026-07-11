@@ -89,6 +89,63 @@
       "confidence": "medium",
       "maxAgeDays": 60
     },
+    "fluorochemicals": {
+      "level1": "新材料与周期成长",
+      "level2": "制冷剂、氟化工与含氟材料",
+      "primaryMethods": ["MID_CYCLE_PE"],
+      "auxiliaryMethods": ["EV_EBITDA", "SOTP"],
+      "forbiddenMethods": ["PEAK_PROFIT_PE"],
+      "scenarios": {
+        "conservative": { "pe": 12, "evEbitda": 7 },
+        "neutral": { "pe": 20, "evEbitda": 10 },
+        "optimistic": { "pe": 28, "evEbitda": 13 }
+      },
+      "reasonableBounds": { "pe": [8, 35], "evEbitda": [5, 16] },
+      "cycleAttribute": "配额约束周期与材料成长并存",
+      "growthAttribute": "制冷剂景气、产品升级和含氟材料国产替代",
+      "keyMetrics": ["制冷剂价格", "配额", "价差", "含氟材料收入", "产能", "现金流"],
+      "parameterSource": "配额周期利润与含氟材料成长分部交叉估值",
+      "confidence": "medium",
+      "maxAgeDays": 60
+    },
+    "ai_infrastructure": {
+      "level1": "数字基础设施",
+      "level2": "AI服务器与算力基础设施",
+      "primaryMethods": ["FORWARD_PE", "PS"],
+      "auxiliaryMethods": ["PEG", "SOTP"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 24, "ps": 0.8 },
+        "neutral": { "pe": 36, "ps": 1.5 },
+        "optimistic": { "pe": 50, "ps": 2.5 }
+      },
+      "reasonableBounds": { "pe": [18, 60], "ps": [0.5, 3.5] },
+      "cycleAttribute": "全球云厂资本开支与国产算力采购周期",
+      "growthAttribute": "AI服务器渗透、产品结构、订单和份额提升",
+      "keyMetrics": ["AI服务器订单", "收入增速", "毛利率", "存货", "合同负债", "经营现金流"],
+      "parameterSource": "AI基础设施远期PE/PS交叉框架，低毛利硬件禁止照搬芯片估值",
+      "confidence": "medium",
+      "maxAgeDays": 60
+    },
+    "new_energy_core": {
+      "level1": "新能源汽车",
+      "level2": "高压电源、800V与智能底盘核心零部件",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["PEG", "DCF", "SOTP"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 18 },
+        "neutral": { "pe": 28 },
+        "optimistic": { "pe": 40 }
+      },
+      "reasonableBounds": { "pe": [12, 48] },
+      "cycleAttribute": "整车销量、价格战与平台换代周期",
+      "growthAttribute": "800V渗透、单车价值量、客户定点与出海份额",
+      "keyMetrics": ["定点订单", "客户结构", "单车价值量", "毛利率", "产能利用率", "现金流"],
+      "parameterSource": "新能源汽车核心零部件远期PE/PEG与订单兑现框架",
+      "confidence": "medium",
+      "maxAgeDays": 90
+    },
     "semiconductor_advanced": {
       "level1": "科技制造",
       "level2": "半导体与高端制造",

@@ -60,16 +60,21 @@ function detectIndustryFamily(company = {}) {
   const legalIndustry = String(company.legalIndustry || company.industry || "").trim();
   const businessText = String(company.coreBusiness || company.businessDescription || "").trim();
   const text = `${legalIndustry} ${businessText}`.trim();
-  const rule = taxonomyConfig.rules.find(item => new RegExp(item.pattern, "i").test(text));
+  const businessRule = businessText ? taxonomyConfig.rules.find(item => item.family !== "generic_industrial" && new RegExp(item.pattern, "i").test(businessText)) : null;
+  const legalRule = taxonomyConfig.rules.find(item => new RegExp(item.pattern, "i").test(legalIndustry));
+  const rule = businessRule || legalRule || taxonomyConfig.rules.find(item => item.family === "generic_industrial");
   const familyId = rule?.family || "generic_industrial";
   const parameters = valuationConfig.families[familyId] || valuationConfig.families.generic_industrial;
   const generic = familyId === "generic_industrial";
+  const specialized = ["ai_infrastructure", "fluorochemicals", "new_energy_core", "semiconductor_advanced", "software_platform", "innovation_pharma"].includes(familyId);
+  const businessVerified = Boolean(businessRule);
   return {
     familyId,
     legalIndustry: legalIndustry || "无法识别",
     level1: parameters.level1,
     level2: parameters.level2,
-    confidence: !legalIndustry ? "low" : generic ? "low" : "medium",
+    confidence: !legalIndustry || generic || (specialized && !businessVerified) ? "low" : "medium",
+    matchedBy: businessVerified ? "主营业务" : "法定行业",
     matchedPattern: rule?.pattern || null,
     parameters
   };
@@ -201,6 +206,25 @@ function impliedBases(company, financial = {}) {
   const shareRatio = rawSharesYi !== null && inferredSharesYi ? rawSharesYi / inferredSharesYi : null;
   const suppliedSharesPlausible = rawSharesYi !== null && rawSharesYi > 0 && (shareRatio === null || (shareRatio >= 0.8 && shareRatio <= 1.2));
   const totalSharesYi = suppliedSharesPlausible ? rawSharesYi : inferredSharesYi;
+  const impliedTtmEarningsYi = pe !== null && pe > 0 && currentMcapYi !== null ? currentMcapYi / pe : numberOrNull(financial.normalizedProfitYi);
+  const guidanceLowYi = numberOrNull(financial.guidancePeriodProfitLowYi);
+  const guidanceHighYi = numberOrNull(financial.guidancePeriodProfitHighYi);
+  const guidancePriorYi = numberOrNull(financial.guidancePriorPeriodProfitYi);
+  const guidanceGrowthLowPct = numberOrNull(financial.guidanceGrowthLowPct);
+  const guidanceGrowthHighPct = numberOrNull(financial.guidanceGrowthHighPct);
+  const hasHalfYearGuidance = financial.guidancePeriod === "H1" && guidanceLowYi !== null && guidanceHighYi !== null && guidancePriorYi !== null;
+  const priorRemainderYi = hasHalfYearGuidance && impliedTtmEarningsYi !== null ? Math.max(0, impliedTtmEarningsYi - guidancePriorYi) : null;
+  const guidanceMidYi = hasHalfYearGuidance ? (guidanceLowYi + guidanceHighYi) / 2 : null;
+  const guidanceMidGrowthPct = guidanceGrowthLowPct !== null && guidanceGrowthHighPct !== null ? (guidanceGrowthLowPct + guidanceGrowthHighPct) / 2 : null;
+  const guidanceAnnualized = hasHalfYearGuidance ? {
+    conservative: guidanceLowYi + priorRemainderYi,
+    neutral: guidanceMidYi + priorRemainderYi * (1 + Math.min(Math.max((guidanceMidGrowthPct || 0) * 0.5, 0), 60) / 100),
+    optimistic: guidanceHighYi + priorRemainderYi * (1 + Math.min(Math.max((guidanceGrowthHighPct || 0) * 0.75, 0), 100) / 100)
+  } : null;
+  const forwardEarningsYi = numberOrNull(financial.consensusProfitYi ?? financial.forwardProfitYi ?? financial.guidanceProfitYi)
+    ?? guidanceAnnualized?.neutral
+    ?? null;
+  const forwardRevenueYi = numberOrNull(financial.consensusRevenueYi ?? financial.forwardRevenueYi ?? financial.guidanceRevenueYi);
   return {
     currentMcapYi,
     close,
@@ -211,9 +235,22 @@ function impliedBases(company, financial = {}) {
     pe,
     pb,
     ps,
-    earningsYi: pe !== null && pe > 0 && currentMcapYi !== null ? currentMcapYi / pe : numberOrNull(financial.normalizedProfitYi),
+    earningsYi: forwardEarningsYi ?? impliedTtmEarningsYi,
+    earningsByScenario: guidanceAnnualized,
+    earningsSource: guidanceAnnualized ? "业绩预告分期年化" : forwardEarningsYi !== null ? "未来12个月盈利预测" : "当前市值/TTM PE反推",
+    guidanceAudit: guidanceAnnualized ? {
+      period: "H1",
+      currentLowYi: guidanceLowYi,
+      currentHighYi: guidanceHighYi,
+      priorSamePeriodYi: guidancePriorYi,
+      priorRemainderYi: round(priorRemainderYi, 2),
+      annualized: Object.fromEntries(Object.entries(guidanceAnnualized).map(([key, value]) => [key, round(value, 2)])),
+      rule: "保守：下半年不增长；中性：兑现上半年同比的一半且最高60%；乐观：兑现75%且最高100%。"
+    } : null,
     bookValueYi: pb !== null && pb > 0 && currentMcapYi !== null ? currentMcapYi / pb : numberOrNull(financial.bookValueYi),
-    revenueYi: ps !== null && ps > 0 && currentMcapYi !== null ? currentMcapYi / ps : numberOrNull(financial.revenueYi),
+    revenueYi: forwardRevenueYi ?? (ps !== null && ps > 0 && currentMcapYi !== null ? currentMcapYi / ps : numberOrNull(financial.revenueYi)),
+    revenueSource: forwardRevenueYi !== null ? "未来12个月收入预测" : "当前市值/TTM PS反推",
+    forecastHorizonYears: forwardEarningsYi !== null || forwardRevenueYi !== null ? 1 : 0,
     embeddedValueYi: numberOrNull(financial.embeddedValueYi),
     pipelineRnpvYi: numberOrNull(financial.pipelineRnpvYi),
     navYi: numberOrNull(financial.navYi)
@@ -226,7 +263,7 @@ function methodForFamily(familyId, bases) {
   if (familyId === "innovation_pharma") return bases.pipelineRnpvYi ? "PIPELINE_RNPV" : null;
   if (familyId === "real_estate") return bases.navYi ? "NAV" : bases.bookValueYi ? "PB" : null;
   if (familyId === "software_platform" && (!bases.earningsYi || bases.earningsYi <= 0)) return bases.revenueYi ? "PS" : null;
-  if (bases.earningsYi && bases.earningsYi > 0) return familyId === "cyclical_resources" ? "MID_CYCLE_PE" : "FORWARD_PE";
+  if (bases.earningsYi && bases.earningsYi > 0) return ["cyclical_resources", "fluorochemicals"].includes(familyId) ? "MID_CYCLE_PE" : "FORWARD_PE";
   if (bases.revenueYi && ["semiconductor_advanced", "software_platform"].includes(familyId)) return "PS";
   if (bases.bookValueYi) return "PB";
   return null;
@@ -239,29 +276,55 @@ function forwardGrowthAssumptions(familyId, financial = {}, evidence = {}) {
   const average = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   const profitSignal = average(profitSignals);
   const revenueSignal = average(revenueSignals);
-  const baseSignal = profitSignal ?? revenueSignal;
-  const evidenceCount = profitSignals.length + revenueSignals.length;
-  const neutral = baseSignal === null ? null : clamp(baseSignal * 0.55 + family.base * 0.45, family.min, family.max);
-  const conservative = neutral === null ? null : clamp(Math.min(neutral * 0.65, family.base), family.min, family.max);
-  const optimistic = neutral === null ? null : clamp(Math.max(neutral * 1.25, family.base * 1.2), family.min, family.max);
-  const revenueNeutral = revenueSignal === null ? neutral : clamp(revenueSignal * 0.6 + family.base * 0.4, family.min, family.max);
+  const marginTrend = numberOrNull(financial.marginTrend) || 0;
+  const newBusinessRevenueShare = numberOrNull(evidence.newBusinessRevenueSharePct) || 0;
+  const newBusinessProfitShare = numberOrNull(evidence.newBusinessProfitSharePct) || 0;
+  const policyStrength = clamp(numberOrNull(evidence.policyStrengthScore) || 0, 0, 5);
+  const shareGain = revenueSignal === null ? 0 : clamp((revenueSignal - family.base) * 0.35, -5, 15);
+  const marginContribution = clamp(marginTrend * 0.5, -6, 10);
+  const profitConversion = profitSignal === null || revenueSignal === null ? 0 : clamp((profitSignal - revenueSignal) * 0.15, -6, 15);
+  const newBusinessRevenueContribution = clamp(newBusinessRevenueShare * 0.12, 0, 8);
+  const newBusinessProfitContribution = clamp(newBusinessProfitShare * 0.15, 0, 10);
+  const policyContribution = policyStrength * 0.6;
+  const evidenceCount = profitSignals.length + revenueSignals.length
+    + (marginTrend !== 0 ? 1 : 0)
+    + (newBusinessRevenueShare > 0 ? 1 : 0)
+    + (newBusinessProfitShare > 0 ? 1 : 0)
+    + (policyStrength > 0 ? 1 : 0);
+  const dynamicProfitCeiling = Math.max(family.max, Math.min(80, Math.max(0, profitSignal || 0) * 0.8));
+  const dynamicRevenueCeiling = Math.max(family.max, Math.min(60, Math.max(0, revenueSignal || 0) * 0.8));
+  const revenueNeutral = clamp(family.base + shareGain + newBusinessRevenueContribution + policyContribution, family.min, dynamicRevenueCeiling);
+  const neutral = clamp(revenueNeutral + marginContribution + profitConversion + newBusinessProfitContribution, family.min, dynamicProfitCeiling);
+  const conservative = clamp(family.base * 0.55 + Math.min(shareGain, 0) + Math.min(marginContribution, 0), family.min, neutral);
+  const optimistic = clamp(neutral + Math.max(0, family.max - family.base) * 0.65 + Math.max(shareGain, 0) * 0.5, neutral, Math.max(dynamicProfitCeiling, family.max));
+  const revenueConservative = clamp(family.base * 0.6 + Math.min(shareGain, 0), family.min, revenueNeutral);
+  const revenueOptimistic = clamp(revenueNeutral + Math.max(0, family.max - family.base) * 0.6, revenueNeutral, Math.max(dynamicRevenueCeiling, family.max));
   const rates = {
-    conservative: conservative === null ? null : { profitCagrPct: round(conservative, 1), revenueCagrPct: round(Math.min(conservative, revenueNeutral ?? conservative), 1) },
-    neutral: neutral === null ? null : { profitCagrPct: round(neutral, 1), revenueCagrPct: round(revenueNeutral ?? neutral, 1) },
-    optimistic: optimistic === null ? null : { profitCagrPct: round(optimistic, 1), revenueCagrPct: round(Math.max(optimistic * 0.85, revenueNeutral ?? optimistic), 1) }
+    conservative: { profitCagrPct: round(conservative, 1), revenueCagrPct: round(revenueConservative, 1) },
+    neutral: { profitCagrPct: round(neutral, 1), revenueCagrPct: round(revenueNeutral, 1) },
+    optimistic: { profitCagrPct: round(optimistic, 1), revenueCagrPct: round(revenueOptimistic, 1) }
   };
   return {
     version: forwardGrowthConfig.version,
     industryRange: { min: family.min, base: family.base, max: family.max },
     industryDriver: family.driver,
     historicalSignals: { profitCagr3Y: numberOrNull(financial.profitCagr3Y), latestProfitGrowth: numberOrNull(financial.latestProfitGrowth), revenueCagr3Y: numberOrNull(financial.revenueCagr3Y), latestRevenueGrowth: numberOrNull(financial.latestRevenueGrowth) },
+    decomposition: {
+      industryGrowthPct: family.base,
+      companyShareGainPct: round(shareGain, 1),
+      marginContributionPct: round(marginContribution, 1),
+      profitConversionPct: round(profitConversion, 1),
+      newBusinessRevenueContributionPct: round(newBusinessRevenueContribution, 1),
+      newBusinessProfitContributionPct: round(newBusinessProfitContribution, 1),
+      policyContributionPct: round(policyContribution, 1)
+    },
     rates,
     realization: forwardGrowthConfig.scenarioRealization,
     evidenceCount,
     valid: evidenceCount >= 2,
     confidence: evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low",
     marketShareEvidence: evidence.marketShareGrowthPct ?? null,
-    rule: "产业增速只提供边界，公司历史与最新增长决定中枢；缺少至少两项成长数据时不参与排名。"
+    rule: "产业增速决定起点，公司份额、利润率、新业务和政策兑现形成增量；财报增速只用于验证执行力和限制情景，不直接替代产业空间。"
   };
 }
 
@@ -269,10 +332,14 @@ function projectedBases(bases, assumptions, scenario, years) {
   const rates = assumptions.rates[scenario];
   if (!rates) return { ...bases };
   const realization = Number(assumptions.realization[scenario] || 1);
-  const grow = (value, rate) => value && value > 0 ? value * Math.pow(1 + rate / 100, years) * realization : value;
+  const projectionYears = Math.max(0, years - Number(bases.forecastHorizonYears || 0));
+  const grow = (value, rate) => value && value > 0
+    ? value * Math.pow(1 + (rate / 100) * realization, projectionYears)
+    : value;
+  const scenarioEarnings = numberOrNull(bases.earningsByScenario?.[scenario]) ?? bases.earningsYi;
   return {
     ...bases,
-    earningsYi: grow(bases.earningsYi, rates.profitCagrPct),
+    earningsYi: grow(scenarioEarnings, rates.profitCagrPct),
     bookValueYi: grow(bases.bookValueYi, Math.min(rates.profitCagrPct, 18)),
     revenueYi: grow(bases.revenueYi, rates.revenueCagrPct),
     embeddedValueYi: grow(bases.embeddedValueYi, Math.min(rates.profitCagrPct, 15)),
@@ -338,13 +405,15 @@ function validateValuation({ company, industry, business, financial, bases, meth
   if (["insurance", "bank", "securities"].includes(industry.familyId) && method === "PS") invalidReasons.push("金融公司禁止使用普通PS估值");
   if (industry.familyId === "innovation_pharma" && method !== "PIPELINE_RNPV") invalidReasons.push("创新药缺少风险调整管线估值");
   if (method?.includes("PE") && (!bases.earningsYi || bases.earningsYi <= 0)) invalidReasons.push("未盈利公司禁止使用PE");
-  if (industry.familyId === "cyclical_resources" && method === "FORWARD_PE") invalidReasons.push("周期公司禁止直接使用利润高点PE");
+  if (["cyclical_resources", "fluorochemicals"].includes(industry.familyId) && method === "FORWARD_PE") invalidReasons.push("周期公司禁止直接使用利润高点PE");
   if (business.newBusinessValuationWeight > 0.1 && business.transformationConfidence === "low") invalidReasons.push("新业务数据不足但估值权重过高");
   if (marketStamp.stale) invalidReasons.push("行情或市值数据已过期");
   if (financialStamp.stale) invalidReasons.push("财务数据已过期");
   if (!bases.currentMcapYi || bases.currentMcapYi <= 0) invalidReasons.push("当前市值缺失或单位无法确认");
   if (!bases.totalSharesYi || bases.totalSharesYi <= 0) invalidReasons.push("总股本缺失，无法校验目标价");
   if (!forwardAssumptions.valid) invalidReasons.push("缺少至少两项可靠成长数据，不能生成前瞻估值");
+  if (!scenarios.neutral?.marketCapYi || !scenarios.neutral?.targetPrice) invalidReasons.push("缺少12个月中性估值情景");
+  if (!futureScenarios?.neutral?.marketCapYi || !futureScenarios?.neutral?.targetPrice) invalidReasons.push("缺少三年中性估值情景");
   for (const scenario of SCENARIOS) {
     const result = scenarios[scenario];
     if (!result) continue;
@@ -362,6 +431,8 @@ function validateValuation({ company, industry, business, financial, bases, meth
   const strategicRatio = futureScenarios?.neutral?.marketCapYi && bases.currentMcapYi ? futureScenarios.neutral.marketCapYi / bases.currentMcapYi : null;
   if (twelveMonthRatio !== null && twelveMonthRatio > 2.5) invalidReasons.push("12个月中性估值超过当前市值2.5倍，重估或盈利假设过于极端");
   if (strategicRatio !== null && strategicRatio > 5) invalidReasons.push("三年中性估值超过当前市值5倍，必须补充市场份额和订单证据");
+  if (twelveMonthRatio !== null && twelveMonthRatio < 0.25) invalidReasons.push("12个月中性估值低于当前市值25%，可能存在业务、资产或周期识别缺失");
+  if (strategicRatio !== null && strategicRatio < 0.25) invalidReasons.push("三年中性估值低于当前市值25%，禁止用极端低值指导卖出");
   if (industry.familyId === "insurance" && !bases.embeddedValueYi) warnings.push("内含价值缺失：仅输出PB交叉估值，不允许进入空间排名");
   if (industry.familyId === "utilities") warnings.push("股息率和DCF数据未完整接入，当前仅为辅助估值");
   if (business.inTransition && !business.segments.length) warnings.push("处于业务转型期但缺少分部数据，暂不提高新业务估值权重");
@@ -405,6 +476,19 @@ function buildValuation(company, financial, industry, business, evidence, stamps
   const rankingEligible = validation.valid
     && !(industry.familyId === "insurance" && !bases.embeddedValueYi)
     && !(industry.familyId === "utilities" && !numberOrNull(financial.dividendYieldPct));
+  const forwardEvidenceCount = [
+    financial.consensusProfitYi,
+    financial.forwardProfitYi,
+    financial.guidanceProfitYi,
+    financial.guidancePeriodProfitLowYi,
+    financial.guidancePeriodProfitHighYi,
+    financial.consensusRevenueYi,
+    financial.forwardRevenueYi,
+    financial.guidanceRevenueYi,
+    evidence.forwardProfitYi,
+    evidence.forwardRevenueYi
+  ].filter(value => numberOrNull(value) !== null).length;
+  const actionEligible = validation.valid && forwardEvidenceCount > 0;
   return {
     engineVersion: valuationConfig.parameterVersion,
     method,
@@ -423,11 +507,14 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     twelveMonthUpsideMultiple,
     valid: validation.valid,
     rankingEligible,
+    actionEligible,
+    forwardEvidenceCount,
+    actionInvalidReason: actionEligible ? null : "缺少业绩预告、机构一致预测或明确订单支撑的未来盈利基数",
     invalidReasons: validation.invalidReasons,
     warnings: validation.warnings,
     confidence: validation.valid ? lowerConfidence(industry.parameters.confidence, industry.confidence, business.transformationConfidence === "low" && business.inTransition ? "low" : "high") : "low",
     explanation: validation.valid
-      ? `${industry.level2}采用${scenarios.neutral?.method || method}；持仓动作使用未来12个月中性估值，成长排名使用三年中性情景；乐观情景不参与排名。`
+      ? `${industry.level2}采用${scenarios.neutral?.method || method}；成长排名使用三年情景。${actionEligible ? "已取得未来盈利基数，可辅助持仓动作。" : "未来盈利基数未独立确认，情景值不用于买卖动作。"}`
       : "估值结果异常、关键数据不足或估值逻辑无法验证，暂不参与排名。",
     audit: {
       currentMcapYi: bases.currentMcapYi,
@@ -438,8 +525,12 @@ function buildValuation(company, financial, industry, business, evidence, stamps
       pb: bases.pb,
       ps: bases.ps,
       impliedEarningsYi: round(bases.earningsYi, 2),
+      earningsSource: bases.earningsSource,
+      guidanceAudit: bases.guidanceAudit,
       impliedBookValueYi: round(bases.bookValueYi, 2),
       impliedRevenueYi: round(bases.revenueYi, 2),
+      revenueSource: bases.revenueSource,
+      forwardEvidenceCount,
       embeddedValueYi: bases.embeddedValueYi,
       forwardGrowthVersion: forwardAssumptions.version,
       forwardGrowthRates: forwardAssumptions.rates,
@@ -533,7 +624,7 @@ function buildCompanyResearchSnapshot(company, financial = {}, evidence = {}, co
     dataHealth: stamps,
     conclusion: {
       valid: !conclusionInvalid,
-      status: conclusionInvalid ? "已失效" : "有效",
+      status: conclusionInvalid ? "研究保留/估值待补" : "估值可用",
       generatedAt: context.calculatedAt || now.toISOString(),
       invalidationReasons: conclusionInvalid ? [...valuation.invalidReasons, marketStamp.stale ? "行情过期" : null, financialStamp.stale ? "财务过期" : null].filter(Boolean) : [],
       invalidationTriggers: ["股价变化超过5%", "财报或业绩预告", "重大订单或资本事项", "业务转型评分变化", "行业参数版本变化", "行业景气度变化", "数据源失败或超过有效期"]
@@ -550,8 +641,10 @@ function buildCompanyResearchUniverse(snapshot = [], financialByCode = new Map()
       total: list.length,
       industryRecognized: list.filter(item => item.industry.confidence !== "low").length,
       valuationValid: list.filter(item => item.valuation.valid).length,
+      valuationPending: list.filter(item => !item.valuation.valid).length,
       rankingEligible: list.filter(item => item.valuation.rankingEligible).length,
       invalid: list.filter(item => !item.valuation.valid).length,
+      growthUniverse: list.length,
       engineVersion: valuationConfig.parameterVersion
     }
   };
