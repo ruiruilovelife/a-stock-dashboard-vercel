@@ -3095,20 +3095,19 @@ function currentMarketCapForGrowth(item, marketRow, dailyCandidate) {
   return null;
 }
 
-function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = [], companyResearchByCode = new Map()) {
+function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = []) {
   const marketByCode = new Map((marketWideSnapshot || []).map(row => [row.code, row]));
   const dailyByCode = new Map((dailyCandidates || []).map(item => [item.code, item]));
   const all = FUTURE_GROWTH_UNIVERSE.map(item => {
     const marketRow = marketByCode.get(item.code);
     const daily = dailyByCode.get(item.code);
-    const unifiedResearch = companyResearchByCode.get(item.code);
     const marketCapYi = currentMarketCapForGrowth(item, marketRow, daily);
-    const targetMcapYi = unifiedResearch?.valuation?.rankingEligible ? Number(unifiedResearch.valuation.neutral?.marketCapYi) : null;
-    const upsideMultiple = unifiedResearch?.valuation?.rankingEligible ? unifiedResearch.valuation.upsideMultiple : null;
+    const targetMcapYi = Number(item.targetMcapYi);
+    const upsideMultiple = marketCapYi && targetMcapYi ? Number((targetMcapYi / marketCapYi).toFixed(1)) : null;
     const industryScore = industryTrendScore(item.tier);
     const moatScore = companyMoatScore(item.moatLevel);
     const growthScore = financialGrowthScore(item.financial);
-    const valuationScore = unifiedResearch?.valuation?.rankingEligible ? valuationPotentialScore(marketCapYi, targetMcapYi) : 0;
+    const valuationScore = valuationPotentialScore(marketCapYi, targetMcapYi);
     const techScore = technicalFundsScore(item, marketRow, daily);
     const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
     const performanceImproving = Boolean(item.financial?.inflection) && Number(item.financial?.profit || 0) >= 3;
@@ -3117,18 +3116,16 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
     const isBuyable = isBuyableAShareCode(item.code);
     const phase = totalScore >= 90
       ? "未来赢家重点池"
-      : totalScore >= 80
-        ? "高潜力候选"
-        : totalScore >= 70
-          ? "五倍潜力候选"
-          : totalScore >= 60
+      : totalScore >= 85
+        ? "五倍潜力候选"
+        : totalScore >= 78
           ? "产业研究观察"
           : "未达入池";
     const why = [
       `产业：${item.tier}级${item.industry}，${item.chain}`,
       `竞争力：${item.moat}`,
       `财务：${item.financial?.inflection ? "利润/毛利率拐点待验证或已出现" : "仍需等待财务拐点"}`,
-      `估值空间：统一估值引擎${unifiedResearch?.valuation?.rankingEligible ? `中性估值约${targetMcapYi}亿，空间约${upsideMultiple ?? "-"}倍` : "未通过，暂不参与空间排名"}`
+      `估值空间：当前约${marketCapYi ?? item.currentMcapYi}亿，研究假设目标约${targetMcapYi}亿，空间约${upsideMultiple ?? "-"}倍`
     ].join("；");
     return {
       ...item,
@@ -3136,11 +3133,6 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       marketCapYi,
       targetMcapYi,
       upsideMultiple,
-      valuationValid: Boolean(unifiedResearch?.valuation?.valid),
-      valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible),
-      valuationMethod: unifiedResearch?.valuation?.method || null,
-      valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || [],
-      valuationScenarios: unifiedResearch?.valuation?.scenarios || null,
       pe: marketRow?.pe ?? daily?.pe ?? "待接入",
       peTtm: marketRow?.peTtm ?? daily?.peTtm ?? "待接入",
       pb: marketRow?.pb ?? daily?.pb ?? "待接入",
@@ -3162,25 +3154,14 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       phase,
       performanceImproving,
       futureProfit5xPotential,
-      threeXSpaceQualified: Number(upsideMultiple) >= 3,
-      qualificationLevel: Number(upsideMultiple) >= 3 ? "70分以上且3倍空间达标" : "70分以上研究候选，空间待验证",
       lowAttention,
-      growthContributionBreakdown: {
-        revenueGrowth: Math.min(20, Number(item.financial?.revenue || 0) * 4),
-        profitGrowth: Math.min(25, Number(item.financial?.profit || 0) * 5),
-        newBusiness: Math.min(20, Number(unifiedResearch?.business?.transformationScore || 0) * 0.2),
-        marketShare: Math.min(15, Number(item.moatLevel || 0) * 3),
-        valuationRerating: Math.min(15, valuationScore),
-        mergerOrInjection: 0,
-        sentiment: Math.min(5, techScore * 0.5)
-      },
       coreLogic: why,
       futureCatalysts: item.catalysts.join("；"),
       risk: item.risks.join("；"),
       targetMcap: `${targetMcapYi}亿`,
-      fiveXRead: totalScore >= 70
+      fiveXRead: totalScore >= 85
         ? "产业趋势、竞争力、财务拐点和未来空间同时达标；技术资金只作为买点确认。"
-        : "产业逻辑可研究，但综合分未达70，暂不进入未来5倍正式候选。",
+        : "产业逻辑可研究，但综合分未达85，暂不进入未来5倍正式候选。",
       investmentLogicCard: {
         company: item.name,
         industryPosition: `${item.industry} / ${item.chain}`,
@@ -3194,10 +3175,10 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
 
   const futureFiveXCandidates = all
     .filter(item => item.buyable)
-    .filter(item => item.valuationRankingEligible)
-    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) >= 50 && Number(item.marketCapYi ?? item.currentMcapYi) <= 500)
+    .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
     .filter(item => item.tier === "S" || item.tier === "A")
-    .filter(item => item.totalScore >= 70)
+    .filter(item => item.totalScore > 85)
+    .filter(item => Number(item.upsideMultiple) >= 3)
     .filter(item => item.performanceImproving)
     .slice(0, 12);
 
@@ -3225,8 +3206,9 @@ function isFiveXPoolEligible(item) {
     return marketCap >= 50
       && marketCap <= 500
       && (item.tier === "S" || item.tier === "A")
+      && Number(item.upsideMultiple) >= 3
       && item.performanceImproving
-      && Number(item.fiveXPotentialIndex) >= 70;
+      && Number(item.fiveXPotentialIndex) >= 85;
   }
   if (item.code === "002463") return false; // 沪电股份今年涨幅已过大，不再按早中期5倍候选处理。
   const yearReturn = Number(item.yearReturn);
@@ -4733,7 +4715,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       futureCandidateRules: [
         "当前市值小于1000亿，正式五倍潜力池优先50-500亿。",
         "所属产业必须A级以上，S级优先：AI算力基础设施、半导体国产替代/材料/设备、人形机器人、工业自动化、低空经济、高端制造。",
-        "综合评分达到70分可进入研究候选；未来空间大于3倍才标记为空间达标，同时要求最近业绩或利润率出现改善线索。",
+        "综合评分必须大于85分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
         "必须能说清楚当前市场错误认知，不允许只写题材和K线。",
         "每只股票必须给出目标市值假设、未来催化、最大风险和失败信号。"
       ],
@@ -5222,7 +5204,7 @@ async function buildModelAnalysis(dashboard, session) {
 4. 早盘版指导上午，午间版指导下午，盘后版指导明天，周末版指导下周。
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
 6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
-7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、公司行业前三或技术领先、利润未来3-5年有高增长可能、市场关注度未完全打满。fiveXPotentialIndex达到70可进入研究候选；统一估值空间达到3倍才可标记为空间达标，未达时必须明确提示，不能直接给买入结论。
+7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于85的股票不要建议买入，只能普通观察。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
@@ -5598,7 +5580,7 @@ async function main() {
     dropBelowMin: true
   });
   const trackedFiveXIdeas = buildRollingResearchPool(previous, "trackedFiveXIdeas", fiveXIdeas, candidateTrackingQuotes, {
-    minScore: 70,
+    minScore: 85,
     scoreField: "fiveXPotentialIndex",
     statusPrefix: "5倍模型",
     dropBelowMin: true,

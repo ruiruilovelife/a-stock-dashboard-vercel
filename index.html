@@ -177,7 +177,6 @@
       ["candidates", "强弹性候选"],
       ["value", "估值质量"],
       ["fiveX", "5倍股模型"],
-      ["lowValue", "低估值模型"],
       ["discipline", "策略纪律"]
     ];
 
@@ -363,7 +362,7 @@
         return `${timeLine}<div class="section card notice dense"><h2>产业地图</h2><p>${industryMap.categoryCount || 0}个一级产业、${industryMap.trackCount || 0}个二级赛道。公司关系严格区分核心主营、第二增长曲线、少量布局、间接相关和纯概念映射。</p></div>${(industryMap.categories || []).map(category => `<div class="section card dense"><h2>${category.name}</h2><p>${category.definition}</p><p><b>阶段：</b>${category.stage}　<b>估值：</b>${category.valuation}　<b>风险：</b>${category.risk}</p><table><thead><tr><th>二级赛道</th><th>阶段/景气</th><th>政策与技术驱动</th><th>产业结构</th><th>代表公司与关系</th><th>风险/更新</th></tr></thead><tbody>${category.tracks.map(track => `<tr><td><b>${track.name}</b><br>${track.definition}</td><td>${track.stage}<br>${track.prosperity}</td><td>${track.policyDriver}<br>${track.technologyDriver}</td><td>${track.chainStructure.upstream} → ${track.chainStructure.midstream} → ${track.chainStructure.downstream}</td><td>${track.companies.length ? track.companies.slice(0, 6).map(c => `${c.name}（${c.relation}/${c.purity}纯度）`).join("<br>") : "统一公司库暂无可验证主营样本"}</td><td>${track.risks}<br>${track.updatedAt}</td></tr>`).join("")}</tbody></table></div>`).join("")}`;
       }
 
-      if (id === "fiveX") {
+      if (id === "__fiveXUnified") {
         const formal = state.futureFiveXCandidates || [];
         const research = state.futureGrowthUniverse || [];
         const davis = state.davisDoubleCandidates || [];
@@ -375,7 +374,7 @@
           <div class="section card dense"><h2>一个月滚动跟踪池</h2><p>累计涨跌从首次入选价格计算，与个人持仓收益无关。</p><table><thead><tr><th>股票</th><th>首次/最近入选</th><th>入选/当前价格</th><th>今日/累计涨跌</th><th>状态</th></tr></thead><tbody>${tracked.map(x => `<tr><td><b>${x.name}</b><br>${x.code}</td><td>${x.firstTrackedDate || "-"}<br>${x.lastSelectedDate || "-"}</td><td>${x.entryPrice ?? "-"}<br>${x.currentPrice ?? "-"}</td><td class="${pctClass(x.returnPct)}">${fmtPct(x.dayPct)} / ${fmtPct(x.returnPct)}</td><td>${x.status || "跟踪中"}</td></tr>`).join("") || `<tr><td colspan="5">暂无满足正式门槛的滚动样本。</td></tr>`}</tbody></table></div>`;
       }
 
-      if (id === "lowValue") {
+      if (id === "__lowValueRemoved") {
         const list = (state.oversoldValueIdeas || []).filter(x => x.valuationValid !== false && Number(x.upsideMultiple || 0) > 1);
         return `${timeLine}<div class="section card notice dense"><h2>低估值模型</h2><p>只使用行业适配的统一估值方法，比较当前价格相对保守和中性估值的折价；周期利润高点、现金流恶化、估值逻辑无效和价值陷阱公司不进入排名。</p></div><div class="section card dense"><table><thead><tr><th>股票</th><th>统一估值方法</th><th>当前/保守/中性市值</th><th>折价与空间</th><th>成长与产业</th><th>陷阱检测</th><th>结论有效性</th></tr></thead><tbody>${list.map(x => `<tr><td><b>${x.name}</b><br>${x.code}</td><td>${x.valuationMethod || x.method || "行业专用方法"}</td><td>${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿<br>${x.conservativeMcapYi ?? "-"} / ${x.targetMcapYi ?? "-"}亿</td><td>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "待确认"}</td><td>成长${x.growthScore ?? "-"}/30<br>产业${x.industryScore ?? "-"}/25</td><td>${x.trapRisk || x.maximumRisk || x.risk || "待核验"}</td><td>${x.valuationValid === false ? "估值无效，不排名" : "有效；数据变化后重算"}</td></tr>`).join("") || `<tr><td colspan="7">当前没有通过统一估值、数据时效和价值陷阱校验的低估标的。</td></tr>`}</tbody></table></div>`;
       }
@@ -856,7 +855,7 @@
           </div>
           <div class="section card dense" id="future-five-x">
             <h2>子页面1：未来5倍候选池</h2>
-            <p class="muted">筛选硬条件：市值小于1000亿、产业A级以上、综合评分不低于70、未来空间&gt;3倍、业绩或利润率有改善线索。这里不是预测明天涨跌，而是找未来产业赢家。</p>
+            <p class="muted">筛选硬条件：市值小于1000亿、产业A级以上、综合评分&gt;85、未来空间&gt;3倍、业绩或利润率有改善线索。这里不是预测明天涨跌，而是找未来产业赢家。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>五维评分</th><th>市值空间</th><th>核心逻辑</th><th>未来催化</th><th>最大风险</th></tr></thead><tbody>
               ${fiveXCandidates.map(c => `<tr>
                 <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
@@ -891,7 +890,7 @@
           </div>
           <div class="section card dense" id="five-x-tracking">
             <h2>五倍潜力 1个月滚动池（最多100只）</h2>
-            <p class="muted">只跟踪五倍潜力指数不低于70分的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
+            <p class="muted">只跟踪五倍潜力指数不低于85分的候选；重复入选会延长跟踪期。累计涨跌从首次入选价开始算。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>指数/阶段</th><th>入选/更新</th><th>价格</th><th>涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
               ${trackedFiveX.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
