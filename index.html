@@ -234,6 +234,7 @@
     };
 
     let state = fallbackData;
+    const VALUATION_REBUILDING = true;
 
     function fmtPct(v) {
       if (v === null || v === undefined || v === "") return "-";
@@ -313,8 +314,19 @@
       const meta = state.meta || {};
       const timeLine = `<p class="muted">模型计算：${meta.lastUpdated || "-"} ｜ 行情：${health.sources?.find(x => x.name === "行情与市值")?.latestDataAt || "待确认"} ｜ 财务：${health.sources?.find(x => x.name === "财务数据")?.latestDataAt || "待确认"} ｜ 公告/新闻：${health.sources?.find(x => x.name === "公司公告")?.latestDataAt || "待确认"}</p>`;
 
+      if (VALUATION_REBUILDING && ["actions", "industry", "elasticity", "value", "fiveX"].includes(id)) {
+        return `${timeLine}<div class="section card risk dense"><h2>估值系统重构中</h2><p>该页面依赖的目标价、目标市值、上涨空间、估值评分和估值驱动买卖建议已暂停展示。当前正在改为产业空间、公司份额、新业务商业化、政策传导和未来利润共同驱动的统一估值；完成逐股审计前不恢复排名和建议。</p><p><b>仍可使用：</b>行情、涨跌幅、公告原文、财报事实、指数趋势和市场宽度。旧估值数字全部作废。</p></div>`;
+      }
+
       if (id === "overview") {
         const stage = chief.marketStage || {};
+        if (VALUATION_REBUILDING) {
+          const breadth = funding.marketBreadth || {};
+          return `${timeLine}
+            <div class="section card risk dense"><h2>估值与推荐暂停</h2><p>底层产业驱动估值正在重构。目标价、目标市值、上涨空间、候选排名及由此产生的持仓动作暂不展示，旧数字全部作废。</p></div>
+            <div class="section card dense"><h2>当前市场阶段（仅行情与趋势）</h2><p><b>${stage.regime || "等待有效数据"}</b> ｜ ${stage.phase || "待确认"} ｜ 风险偏好：${stage.riskPreference || "待确认"}</p><p>${stage.basis || "数据不足时不输出强结论。"}</p><table><thead><tr><th>指数</th><th>收盘</th><th>当日</th><th>中期趋势</th></tr></thead><tbody>${(stage.indices || []).map(x => `<tr><td><b>${x.name}</b></td><td>${x.close ?? "-"}</td><td class="${pctClass(x.pct)}">${fmtPct(x.pct)}</td><td>${x.trend?.status || "待确认"}<br><span class="muted">${x.trend?.read || "周线数据待确认"}</span></td></tr>`).join("")}</tbody></table></div>
+            <div class="grid">${card("上涨/下跌", `<div class="num">${breadth.upCount ?? "-"} / ${breadth.downCount ?? "-"}</div>`)}${card("涨停/跌停", `<div class="num">${breadth.limitUp ?? "-"} / ${breadth.limitDown ?? "-"}</div>`)}${card("数据健康", `<p><b>${health.degraded ? "降级运行" : "数据正常"}</b></p>`)}</div>`;
+        }
         return `${timeLine}
           <div class="section card risk dense"><h2>当前市场阶段</h2>
             <p><b>${stage.regime || "等待有效数据"}</b> ｜ ${stage.phase || "待确认"} ｜ 风险偏好：${stage.riskPreference || "待确认"} ｜ 合理仓位：${stage.positionRange || "待确认"}</p>
@@ -338,7 +350,7 @@
 
       if (id === "actions") {
         return `${timeLine}<div class="section card notice dense"><h2>组合层面建议</h2><p><b>集中度风险：</b>${advice.portfolio?.concentrationRisk || "待确认"}；${advice.portfolio?.sharedRisk || ""}</p><p><b>优先加仓：</b>${advice.portfolio?.preferredAdd || "暂无"}　<b>优先减仓：</b>${advice.portfolio?.preferredReduce || "暂无"}　<b>资金来源：</b>${advice.portfolio?.fundingSource || "现金"}</p><p>${advice.portfolio?.rule || "动作由统一公司研究快照生成。"}</p></div>
-          <div class="section card dense"><h2>最新持仓操作表</h2><table><thead><tr><th>股票/动作</th><th>估值距离</th><th>趋势/量能/板块</th><th>公告与业务兑现</th><th>加仓触发</th><th>减仓触发</th><th>有效期/置信度</th></tr></thead><tbody>${(advice.items || []).map(x => `<tr><td><b>${x.name}</b><br>${x.action} · ${x.priority}<br><span class="muted">${x.portfolioRole}</span></td><td>现价${x.valuationDistance?.currentPrice ?? "-"}<br>保守${x.valuationDistance?.conservativeTargetPrice ?? "-"} / 中性${x.valuationDistance?.neutralTargetPrice ?? "-"} / 乐观${x.valuationDistance?.optimisticTargetPrice ?? "-"}</td><td>${x.technicalTrend}<br>${x.volumeChange}<br>${x.sectorTrend}</td><td>${x.latestEvent?.title || "未自动确认新增硬事件"}<br>${x.businessRealization}</td><td>${(x.addTriggers || []).join("；")}</td><td>${(x.reduceTriggers || []).join("；")}</td><td>${x.validFor}<br>${x.generatedAt || "-"}<br>置信度${x.confidence}</td></tr>`).join("") || `<tr><td colspan="7">最新持仓尚未进入统一建议引擎。</td></tr>`}</tbody></table></div>`;
+          <div class="section card dense"><h2>最新持仓操作表</h2><table><thead><tr><th>股票/动作</th><th>发展型估值</th><th>趋势/量能/板块</th><th>公告与业务兑现</th><th>加仓触发</th><th>减仓触发</th><th>有效期/置信度</th></tr></thead><tbody>${(advice.items || []).map(x => `<tr><td><b>${x.name}</b><br>${x.action} · ${x.priority}<br><span class="muted">${x.portfolioRole}</span></td><td>现价${x.valuationDistance?.currentPrice ?? "-"}<br>${x.valuationDistance?.actionEligible ? `12个月中性${x.valuationDistance.neutralTargetPrice ?? "-"}<br>三年中性${x.valuationDistance.strategicNeutralTargetPrice ?? "-"} / 乐观${x.valuationDistance.strategicOptimisticTargetPrice ?? "-"}` : `<b>暂不估值</b><br><span class="muted">${x.valuationDistance?.note || "未来盈利基数待确认"}</span>`}</td><td>${x.technicalTrend}<br>${x.volumeChange}<br>${x.sectorTrend}</td><td>${x.latestEvent?.title || "未自动确认新增硬事件"}<br>${x.businessRealization}</td><td>${(x.addTriggers || []).join("；")}</td><td>${(x.reduceTriggers || []).join("；")}</td><td>${x.validFor}<br>${x.generatedAt || "-"}<br>置信度${x.confidence}</td></tr>`).join("") || `<tr><td colspan="7">最新持仓尚未进入统一建议引擎。</td></tr>`}</tbody></table></div>`;
       }
 
       if (id === "funds") {
