@@ -155,7 +155,7 @@
     <div class="wrap topbar">
       <div>
         <h1>A股跟踪仪表盘</h1>
-        <div class="sub" id="subtitle">云端版 · 每日 09:00 / 12:30 / 17:00 北京时间自动更新</div>
+        <div class="sub" id="subtitle">云端版 · 每日北京时间 18:00 · GPT-5.6 Sol 深度投研</div>
       </div>
       <div class="datebox" id="updateBox">正在读取数据...</div>
     </div>
@@ -836,7 +836,6 @@
         const scoringDimensions = model.scoringDimensions || [];
         const futureRules = model.futureCandidateRules || [];
         const fiveXCandidates = state.futureFiveXCandidates || state.fiveXCandidates || [];
-        const industryMap = state.industryChainMap || [];
         const davisDouble = state.davisDoubleCandidates || [];
         const trackedFiveX = state.trackedFiveXIdeas || [];
         html = `
@@ -846,7 +845,6 @@
             <p><b>样本口径：</b>${model.sampleNote || "代表性样本用于提炼框架，不等于完整名单。"}</p>
             <div class="subtabs">
               <a class="subtab" href="#future-five-x">未来5倍候选池</a>
-              <a class="subtab" href="#industry-chain-map">产业链地图</a>
               <a class="subtab" href="#davis-double">戴维斯双击</a>
               <a class="subtab" href="#five-x-tracking">滚动跟踪池</a>
               <a class="subtab" href="#five-x-samples">历史样本</a>
@@ -859,7 +857,7 @@
             </tbody></table></div>
           </div>
           <div class="section card dense" id="future-five-x">
-            <h2>子页面1：未来5倍候选池</h2>
+            <h2>未来5倍候选池</h2>
             <p class="muted">筛选硬条件：市值小于1000亿、产业A级以上、综合评分&gt;85、未来空间&gt;3倍、业绩或利润率有改善线索。这里不是预测明天涨跌，而是找未来产业赢家。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>五维评分</th><th>市值空间</th><th>核心逻辑</th><th>未来催化</th><th>最大风险</th></tr></thead><tbody>
               ${fiveXCandidates.map(c => `<tr>
@@ -873,14 +871,8 @@
               </tr>`).join("")}
             </tbody></table></div>
           </div>
-          <div class="section dense" id="industry-chain-map">
-            <h2>子页面2：产业链地图</h2>
-            <div class="grid3">
-              ${industryMap.map(chain => card(chain.chain, `<table class="compact-table"><thead><tr><th>节点</th><th>对应股票</th><th>判断重点</th></tr></thead><tbody>${(chain.nodes || []).map(n => `<tr><td><b>${n.node}</b></td><td>${(n.stocks || []).join("、")}</td><td>${n.read || "-"}</td></tr>`).join("")}</tbody></table>`)).join("")}
-            </div>
-          </div>
           <div class="section card dense" id="davis-double">
-            <h2>子页面3：戴维斯双击模型</h2>
+            <h2>戴维斯双击模型</h2>
             <p class="muted">寻找“业绩增长 + 估值提升”的公司：利润改善、毛利率提升、行业景气向上、当前估值或关注度仍有预期差。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>行业</th><th>评分</th><th>双击逻辑</th><th>催化</th><th>风险</th></tr></thead><tbody>
               ${davisDouble.map(c => `<tr>
@@ -1092,7 +1084,7 @@
         state = fallbackData;
       }
       document.getElementById("subtitle").textContent = `${state.meta.version || "云端版"} · ${state.meta.dataSource || ""}`;
-      document.getElementById("updateBox").innerHTML = `页面更新时间：${state.meta.lastUpdated || "-"}<br>版本：${state.meta.session || "-"}<br>指导对象：${state.meta.guidanceTarget || "-"}<br>固定口径：工作日 09:00 / 12:30 / 17:00，周末 17:00`;
+      document.getElementById("updateBox").innerHTML = `页面更新时间：${state.meta.lastUpdated || "-"}<br>版本：${state.meta.session || "-"}<br>指导对象：${state.meta.guidanceTarget || "-"}<br>自动更新：每日北京时间 18:00<br>分析模型：${state.macro?.modelAnalysis?.model || "等待模型确认"}`;
       initTabs();
       render("overview");
     }

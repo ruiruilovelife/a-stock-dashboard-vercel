@@ -1,9 +1,6 @@
 name: Update A Stock Dashboard
 
 on:
-  push:
-    branches:
-      - main
   schedule:
     # Start at 18:00 Asia/Shanghai and retry the trigger through 19:45.
     # The schedule gate allows only the first successful daily model update.
