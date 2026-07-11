@@ -7,8 +7,8 @@ const {
   elasticityFailureReasons,
   elasticityFundsScore,
   elasticityIndustryScore,
+  elasticityMoatScore,
   elasticityProbabilityStars,
-  elasticitySpaceScore,
   elasticityStartupPhase,
   elasticityTrendScore
 } = await import("./update-dashboard.mjs");
@@ -39,27 +39,27 @@ assert.equal(elasticityStartupPhase(earlyWeekly), "主升初期");
 assert.equal(elasticityStartupPhase(acceleratedWeekly), "加速期");
 assert.equal(elasticityStartupPhase(highRiskWeekly), "高位风险");
 assert.ok(elasticityTrendScore(earlyWeekly, "主升初期") > elasticityTrendScore(acceleratedWeekly, "加速期"));
-assert.equal(elasticityFundsScore(marketRow, earlyWeekly), 25);
-assert.equal(elasticityIndustryScore(sIndustry, growth), 25);
+assert.equal(elasticityFundsScore(marketRow, earlyWeekly), 30);
+assert.ok(elasticityIndustryScore(sIndustry, growth) >= 28);
 assert.ok(elasticityIndustryScore(sIndustry, growth) > elasticityIndustryScore(weakIndustry, growth));
-assert.equal(elasticitySpaceScore(5, 180), 25);
+assert.ok(elasticityMoatScore({ roe: 20, grossMargin: 35, ocfToProfit: 100, marginTrend: 1, debtToAssets: 40 }) >= 8);
 assert.equal(elasticityCandidateType(sIndustry, marketRow), "产业趋势型");
 assert.equal(elasticityCandidateType({ tier: "B", label: "化工", chain: "制冷剂" }, marketRow), "周期反转型");
-assert.equal(elasticityProbabilityStars(90, 22, 21, 24), 5);
+assert.equal(elasticityProbabilityStars(90, 24, 24, 26), 5);
 
 const risks = elasticityFailureReasons({
   weekly: { ...earlyWeekly, weeklyTrendPass: false, volumeStairPass: false },
   phase: "底部",
   industry: weakIndustry,
   growth: { latestProfitGrowth: -10 },
-  upsideMultiple: 1.1,
-  fundsScore: 8
+  fundsScore: 8,
+  moatScore: 3
 });
 assert.ok(risks.includes("产业逻辑不足"));
 assert.ok(risks.includes("资金可能只是短炒"));
-assert.ok(risks.includes("估值或上涨空间不足"));
 assert.ok(risks.includes("周线未确认"));
 assert.ok(risks.includes("业绩兑现不足"));
+assert.ok(risks.includes("竞争壁垒证据不足"));
 
 console.log(JSON.stringify({
   earlyPhase: elasticityStartupPhase(earlyWeekly),

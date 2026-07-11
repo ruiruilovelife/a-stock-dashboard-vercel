@@ -2586,17 +2586,17 @@ function elasticityStartupPhase(weekly) {
 function elasticityTrendScore(weekly, phase) {
   if (!weekly) return 0;
   let score = 0;
-  if (weekly.closeAbove20w) score += 4;
-  if (weekly.closeAbove60w) score += 3;
-  if (weekly.ma20Rising) score += 4;
+  if (weekly.closeAbove20w) score += 5;
+  if (weekly.closeAbove60w) score += 4;
+  if (weekly.ma20Rising) score += 5;
   if (weekly.ma60Rising) score += 3;
-  if (weekly.maQueue) score += 4;
-  if (weekly.longConsolidation) score += 3;
+  if (weekly.maQueue) score += 5;
+  if (weekly.longConsolidation) score += 4;
   if (phase === "爬坡期" || phase === "主升初期") score += 4;
   else if (phase === "底部") score += 2;
-  if (phase === "加速期") score -= 5;
-  if (phase === "高位风险") score -= 12;
-  return Number(clampScore(score, 0, 25).toFixed(1));
+  if (phase === "加速期") score -= 7;
+  if (phase === "高位风险") score -= 15;
+  return Number(clampScore(score, 0, 30).toFixed(1));
 }
 
 function elasticityFundsScore(row, weekly) {
@@ -2605,39 +2605,39 @@ function elasticityFundsScore(row, weekly) {
   const amountYi = Number(row.amountRaw) / 100000000;
   const dayPct = Number(row.dayPct);
   let score = 0;
-  if (weekly.volumeStairPass) score += 8;
-  if (weekly.upDownVolumePass) score += 6;
-  if (weekly.noBlowoffPass) score += 4;
+  if (weekly.volumeStairPass) score += 10;
+  if (weekly.upDownVolumePass) score += 8;
+  if (weekly.noBlowoffPass) score += 5;
   if (Number.isFinite(turnover) && turnover >= 0.8 && turnover <= 8) score += 3;
   if (Number.isFinite(amountYi) && amountYi >= 2) score += 2;
   if (Number.isFinite(dayPct) && dayPct >= -3 && dayPct <= 5) score += 2;
-  if (Number.isFinite(dayPct) && dayPct > 7) score -= 4;
-  return Number(clampScore(score, 0, 25).toFixed(1));
+  if (Number.isFinite(dayPct) && dayPct > 7) score -= 5;
+  return Number(clampScore(score, 0, 30).toFixed(1));
 }
 
-function elasticityIndustryScore(industry, growth) {
-  const base = { S: 21, A: 17, B: 11, C: 7 }[industry.tier] ?? 7;
+function elasticityIndustryScore(industry, growth, override = null) {
+  const base = { S: 22, A: 18, B: 12, C: 7 }[industry.tier] ?? 7;
   const profitGrowth = Number(growth.latestProfitGrowth ?? growth.profitCagr3Y);
   const revenueGrowth = Number(growth.latestRevenueGrowth ?? growth.revenueCagr3Y);
   let catalyst = 0;
-  if (Number.isFinite(profitGrowth) && profitGrowth >= 50) catalyst += 2;
-  else if (Number.isFinite(profitGrowth) && profitGrowth >= 20) catalyst += 1;
-  if (Number.isFinite(revenueGrowth) && revenueGrowth >= 20) catalyst += 1;
+  if (Number.isFinite(profitGrowth) && profitGrowth >= 50) catalyst += 3;
+  else if (Number.isFinite(profitGrowth) && profitGrowth >= 20) catalyst += 2;
+  if (Number.isFinite(revenueGrowth) && revenueGrowth >= 20) catalyst += 2;
   if (Number(growth.roeTrend) > 0 || Number(growth.marginTrend) > 0) catalyst += 1;
-  return Number(clampScore(base + catalyst, 0, 25).toFixed(1));
+  if (override?.catalysts?.length) catalyst += 2;
+  return Number(clampScore(base + catalyst, 0, 30).toFixed(1));
 }
 
-function elasticitySpaceScore(upsideMultiple, marketCapYi) {
-  const multiple = Number(upsideMultiple);
-  let score = !Number.isFinite(multiple) ? 6
-    : multiple >= 5 ? 25
-      : multiple >= 3 ? 22
-        : multiple >= 2 ? 18
-          : multiple >= 1.5 ? 14
-            : multiple >= 1.1 ? 9 : 4;
-  if (Number(marketCapYi) >= 50 && Number(marketCapYi) <= 500) score += 1;
-  if (Number(marketCapYi) > 1000) score -= 5;
-  return Number(clampScore(score, 0, 25).toFixed(1));
+function elasticityMoatScore(financial, override = null) {
+  if (override?.moatLevel) return Number(clampScore(Number(override.moatLevel) * 2, 0, 10).toFixed(1));
+  let score = 2;
+  if (Number(financial.roe) >= 18) score += 2;
+  else if (Number(financial.roe) >= 12) score += 1;
+  if (Number(financial.grossMargin) >= 30) score += 1.5;
+  if (Number(financial.ocfToProfit) >= 80) score += 1.5;
+  if (Number(financial.marginTrend) >= 0) score += 1;
+  if (Number(financial.debtToAssets) > 0 && Number(financial.debtToAssets) <= 50) score += 1;
+  return Number(clampScore(score, 0, 10).toFixed(1));
 }
 
 function elasticityProbabilityStars(score, trendScore, fundsScore, industryScore) {
@@ -2649,13 +2649,13 @@ function elasticityProbabilityStars(score, trendScore, fundsScore, industryScore
   return 1;
 }
 
-function elasticityFailureReasons({ weekly, phase, industry, growth, upsideMultiple, fundsScore }) {
+function elasticityFailureReasons({ weekly, phase, industry, growth, fundsScore, moatScore }) {
   const reasons = [];
   if (industry.tier === "C") reasons.push("产业逻辑不足");
   if (Number(fundsScore) < 15 || !weekly?.volumeStairPass) reasons.push("资金可能只是短炒");
-  if (Number(upsideMultiple) < 1.5) reasons.push("估值或上涨空间不足");
   if (!weekly?.weeklyTrendPass) reasons.push("周线未确认");
   if (Number(growth.latestProfitGrowth ?? growth.profitCagr3Y) < 15) reasons.push("业绩兑现不足");
+  if (Number(moatScore) < 4) reasons.push("竞争壁垒证据不足");
   if (phase === "加速期" || phase === "高位风险") reasons.push("位置过高，追涨风险大");
   return reasons.length ? reasons : ["产业催化、资金持续性或下一期业绩任一不及预期"];
 }
@@ -2664,7 +2664,7 @@ function elasticityPrefilter(snapshot, financialByCode) {
   return (snapshot || [])
     .filter(row => row.buyable && !/^ST|^\*ST/.test(row.name || ""))
     .filter(row => Number(row.close) > 3)
-    .filter(row => Number(row.marketCapYi) >= 30 && Number(row.marketCapYi) <= 1000)
+    .filter(row => Number(row.marketCapYi) >= 30 && Number(row.marketCapYi) <= 800)
     .filter(row => Number(row.dayPct) > -5 && Number(row.dayPct) < 7.5)
     .filter(row => Number(row.turnover) >= 0.3 && Number(row.turnover) <= 12)
     .map(row => {
@@ -2673,7 +2673,6 @@ function elasticityPrefilter(snapshot, financialByCode) {
       const industry = elasticityIndustryProfile(row);
       const amountYi = Number(row.amountRaw) / 100000000;
       let prefilterScore = industry.score + growth.score;
-      if (Number(row.marketCapYi) >= 50 && Number(row.marketCapYi) <= 500) prefilterScore += 8;
       if (Number.isFinite(amountYi) && amountYi >= 2) prefilterScore += 4;
       if (Number(row.turnover) >= 0.8 && Number(row.turnover) <= 8) prefilterScore += 4;
       return { row, financial, growth, industry, prefilterScore };
@@ -2682,34 +2681,22 @@ function elasticityPrefilter(snapshot, financialByCode) {
     .slice(0, 72);
 }
 
-async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), companyResearchByCode = new Map()) {
+async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) {
   const prefiltered = elasticityPrefilter(snapshot, financialByCode);
   const weeklyPool = prefiltered.map(({ row }) => [symbolFromCode(row.code), row.name, row.code]);
   const weeklyProfiles = await fetchWeeklyProfiles(weeklyPool);
   const scored = prefiltered.map(({ row, financial, growth, industry }) => {
-    const unifiedResearch = companyResearchByCode.get(row.code);
     const weekly = weeklyProfiles.get(row.code);
     const phase = elasticityStartupPhase(weekly);
     const trendScore = elasticityTrendScore(weekly, phase);
     const fundsScore = elasticityFundsScore(row, weekly);
-    const industryScore = elasticityIndustryScore(industry, growth);
-    const valuation = {
-      pe: toNumber(row.peTtm ?? row.pe),
-      pb: toNumber(row.pb),
-      ps: toNumber(row.psTtm ?? row.ps)
-    };
-    const futureSpace = unifiedResearch?.valuation?.rankingEligible
-      ? {
-          targetMcapYi: unifiedResearch.valuation.strategicProbabilityWeighted?.marketCapYi ?? null,
-          upsideMultiple: unifiedResearch.valuation.upsideMultiple ?? null,
-          method: unifiedResearch.valuation.explanation
-        }
-      : { targetMcapYi: null, upsideMultiple: null, method: unifiedResearch?.valuation?.explanation || "统一估值未通过" };
-    const spaceScore = elasticitySpaceScore(futureSpace.upsideMultiple, row.marketCapYi);
-    const elasticityScore = Number(clampScore(trendScore + fundsScore + industryScore + spaceScore, 0, 100).toFixed(1));
+    const override = valueResearchOverride(row.code);
+    const industryScore = elasticityIndustryScore(industry, growth, override);
+    const moatScore = elasticityMoatScore(financial, override);
+    const elasticityScore = Number(clampScore(trendScore + fundsScore + industryScore + moatScore, 0, 100).toFixed(1));
     const type = elasticityCandidateType(industry, row);
-    const catalyst = valueCatalyst(row, valueResearchOverride(row.code), industry);
-    const failureReasons = elasticityFailureReasons({ weekly, phase, industry, growth, upsideMultiple: futureSpace.upsideMultiple, fundsScore });
+    const catalyst = valueCatalyst(row, override, industry);
+    const failureReasons = elasticityFailureReasons({ weekly, phase, industry, growth, fundsScore, moatScore });
     return {
       name: row.name,
       code: row.code,
@@ -2722,8 +2709,8 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), 
       trendStartupScore: trendScore,
       capitalEntryScore: fundsScore,
       industryCatalystScore: industryScore,
-      upsideSpaceScore: spaceScore,
-      capitalStrength: Number((fundsScore / 2.5).toFixed(1)),
+      moatScore,
+      capitalStrength: Number((fundsScore / 3).toFixed(1)),
       mainRiseProbability: elasticityProbabilityStars(elasticityScore, trendScore, fundsScore, industryScore),
       industryTier: industry.tier,
       industryLabel: industry.label,
@@ -2731,9 +2718,6 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), 
       futureCatalyst: catalyst,
       currentMcapYi: row.marketCapYi,
       marketCapYi: row.marketCapYi,
-      targetMcapYi: futureSpace.targetMcapYi,
-      upsideMultiple: futureSpace.upsideMultiple,
-      targetMethod: futureSpace.method,
       failureReasons,
       risk: failureReasons.join("；"),
       financialEdge: `营收3年CAGR ${growth.revenueCagr3Y ?? "待确认"}%；利润3年CAGR ${growth.profitCagr3Y ?? "待确认"}%；最新利润增速 ${growth.latestProfitGrowth ?? "待确认"}%`,
@@ -2761,19 +2745,14 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), 
       buyPoint: phase === "主升初期"
         ? "平台突破后的第一次缩量回踩，或放量突破但单日涨幅不超过5%时分批验证。"
         : "等待20周线之上缩量回踩不破，随后成交额再次温和放大。",
-      selectionReason: "全A预筛后补取周线历史；由趋势启动、连续资金、产业催化和未来市值空间共同评分。",
-      modelVersion: "主升启动模型100分"
-      ,valuationValid: Boolean(unifiedResearch?.valuation?.valid)
-      ,valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible)
-      ,valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || []
-      ,valuationFutureScenarios: unifiedResearch?.valuation?.futureScenarios || null
-      ,forwardGrowthAssumptions: unifiedResearch?.valuation?.forwardAssumptions || null
+      selectionReason: "全A预筛后补取周线历史；由趋势启动、连续资金、产业催化和竞争壁垒共同评分，市值不参与评分。",
+      modelVersion: "主升启动模型30/30/30/10"
     };
   });
   const typePriority = { "产业趋势型": 3, "周期反转型": 2, "资金驱动型": 1 };
   return scored
     .filter(item => item.elasticityScore >= 65)
-    .filter(item => item.valuationRankingEligible)
+    .filter(item => Number(item.marketCapYi) <= 500 || item.elasticityScore >= 80)
     .filter(item => item.phase === "爬坡期" || item.phase === "主升初期")
     .filter(item => !Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
     .sort((a, b) => (typePriority[b.type] - typePriority[a.type]) || b.elasticityScore - a.elasticityScore || b.mainRiseProbability - a.mainRiseProbability)
@@ -2826,14 +2805,21 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
     if (!item.code) continue;
     const score = Number(item.elasticityScore ?? item.climbScore ?? item.score);
     const stillQualified = isBuyableAShareCode(item.code)
-      && item.modelVersion === "主升启动模型100分"
+      && item.modelVersion === "主升启动模型30/30/30/10"
       && Number.isFinite(score)
       && score >= 65
       && (!Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
       && (item.phase === "爬坡期" || item.phase === "主升初期");
     const last = item.lastSelectedDate || item.firstTrackedDate || today;
     if ((stillQualified && daysBetween(last, today) <= 30) || dailyByCode.has(item.code)) {
-      trackedByCode.set(item.code, { ...item });
+      const sanitized = { ...item };
+      delete sanitized.targetMcapYi;
+      delete sanitized.upsideMultiple;
+      delete sanitized.targetMethod;
+      delete sanitized.upsideSpaceScore;
+      delete sanitized.valuationFutureScenarios;
+      delete sanitized.forwardGrowthAssumptions;
+      trackedByCode.set(item.code, sanitized);
     }
   }
 
@@ -2849,12 +2835,10 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
       existing.trendStartupScore = c.trendStartupScore;
       existing.capitalEntryScore = c.capitalEntryScore;
       existing.industryCatalystScore = c.industryCatalystScore;
-      existing.upsideSpaceScore = c.upsideSpaceScore;
+      existing.moatScore = c.moatScore;
       existing.mainRiseProbability = c.mainRiseProbability;
       existing.type = c.type;
       existing.industryCatalyst = c.industryCatalyst;
-      existing.targetMcapYi = c.targetMcapYi;
-      existing.upsideMultiple = c.upsideMultiple;
       existing.risk = c.risk;
       existing.modelVersion = c.modelVersion;
       existing.phase = c.phase;
@@ -2876,12 +2860,10 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
         trendStartupScore: c.trendStartupScore,
         capitalEntryScore: c.capitalEntryScore,
         industryCatalystScore: c.industryCatalystScore,
-        upsideSpaceScore: c.upsideSpaceScore,
+        moatScore: c.moatScore,
         mainRiseProbability: c.mainRiseProbability,
         type: c.type,
         industryCatalyst: c.industryCatalyst,
-        targetMcapYi: c.targetMcapYi,
-        upsideMultiple: c.upsideMultiple,
         risk: c.risk,
         modelVersion: c.modelVersion,
         phase: c.phase,
@@ -3429,19 +3411,31 @@ function valuationSafetyScore(row, financial, medians) {
   const psScore = metricPoints(ps, [[1.5, 5], [3, 4], [6, 2], [10, 1]]);
   const evScore = metricPoints(evEbitda, [[10, 4], [15, 3], [22, 1.5]]);
   let relativeScore = 0;
+  const relativeRatios = [];
   for (const [value, industryMedian] of [[pe, medians?.pe], [pb, medians?.pb], [ps, medians?.ps]]) {
     if (value === null || !Number.isFinite(industryMedian) || value <= 0 || industryMedian <= 0) continue;
     const ratio = value / industryMedian;
+    relativeRatios.push(ratio);
     relativeScore += ratio <= 0.7 ? 1.5 : ratio <= 0.9 ? 1 : ratio <= 1.1 ? 0.5 : 0;
   }
   relativeScore = Math.min(4, relativeScore);
+  const relativeMedianRatio = relativeRatios.length ? median(relativeRatios) : null;
+  const metricCount = [pe, pb, ps, evEbitda].filter(value => value !== null && Number.isFinite(value) && value > 0).length;
   return {
     score: Number(clampScore(peScore + pbScore + psScore + evScore + relativeScore, 0, 25).toFixed(1)),
     pe: pe !== null ? Number(pe.toFixed(1)) : null,
     pb: pb !== null ? Number(pb.toFixed(2)) : null,
     ps: ps !== null ? Number(ps.toFixed(1)) : null,
     evEbitda: evEbitda !== null ? Number(evEbitda.toFixed(1)) : null,
-    relativeScore: Number(relativeScore.toFixed(1))
+    relativeScore: Number(relativeScore.toFixed(1)),
+    relativeMedianRatio: relativeMedianRatio !== null ? Number(relativeMedianRatio.toFixed(2)) : null,
+    relativeDiscountPct: relativeMedianRatio !== null ? Number(((1 - relativeMedianRatio) * 100).toFixed(1)) : null,
+    metricCount,
+    industryMedians: {
+      pe: Number.isFinite(medians?.pe) ? Number(medians.pe.toFixed(1)) : null,
+      pb: Number.isFinite(medians?.pb) ? Number(medians.pb.toFixed(2)) : null,
+      ps: Number.isFinite(medians?.ps) ? Number(medians.ps.toFixed(1)) : null
+    }
   };
 }
 
@@ -3566,6 +3560,106 @@ function valueTrapDetection(valuation, growth, financial, industry) {
   };
 }
 
+function currentUndervaluationAssessment(valuation, growth, financial, industry, trap) {
+  const financialEvidenceCount = [
+    growth.revenueCagr3Y,
+    growth.profitCagr3Y,
+    growth.latestRevenueGrowth,
+    growth.latestProfitGrowth,
+    growth.roe,
+    financial.ocfToProfit
+  ].filter(value => toNumber(value) !== null).length;
+  const isBank = /银行/.test(industry.label || "");
+  const isCyclical = /煤炭|化工|有色|钢铁|石油|基础原料|航运/.test(industry.label || "");
+  const profitGrowth = toNumber(growth.latestProfitGrowth ?? growth.profitCagr3Y);
+  const revenueGrowth = toNumber(growth.latestRevenueGrowth ?? growth.revenueCagr3Y);
+  const roe = toNumber(growth.roe);
+  const ocfToProfit = toNumber(financial.ocfToProfit);
+  const currentValuationValid = valuation.metricCount >= 2 && financialEvidenceCount >= 2;
+  const cashQualityPass = ocfToProfit === null || ocfToProfit >= 60;
+  const growthQualityPass = (profitGrowth === null || profitGrowth >= 0) && (revenueGrowth === null || revenueGrowth >= -5);
+  const qualityPass = cashQualityPass && growthQualityPass && trap.risk !== "高";
+  const cyclicalPeakRisk = isCyclical && profitGrowth !== null && profitGrowth >= 50;
+  const industryDiscount = valuation.relativeDiscountPct;
+  const bankDeepValue = isBank
+    && valuation.pe !== null && valuation.pe <= 9
+    && valuation.pb !== null && valuation.pb <= 0.9
+    && roe !== null && roe >= 10;
+  const absoluteScore = Number(clampScore(
+    metricPoints(valuation.pe, [[10, 12], [15, 10], [22, 7], [35, 4], [50, 2]])
+    + metricPoints(valuation.pb, [[0.8, 8], [1.2, 7], [2, 5], [3.5, 3], [5, 1]])
+    + metricPoints(valuation.ps, [[1, 6], [2, 5], [4, 3], [7, 1.5]])
+    + metricPoints(valuation.evEbitda, [[8, 4], [12, 3], [18, 1.5]]),
+  0, 30).toFixed(1));
+  const industryRelativeScore = industryDiscount === null ? 0
+    : industryDiscount >= 40 ? 25
+      : industryDiscount >= 30 ? 22
+        : industryDiscount >= 20 ? 18
+          : industryDiscount >= 10 ? 13
+            : industryDiscount >= 0 ? 8
+              : industryDiscount >= -15 ? 4 : 0;
+  let earningsQualityScore = 0;
+  if (profitGrowth !== null) earningsQualityScore += profitGrowth >= 30 ? 7 : profitGrowth >= 10 ? 6 : profitGrowth >= 0 ? 4 : 0;
+  if (revenueGrowth !== null) earningsQualityScore += revenueGrowth >= 15 ? 5 : revenueGrowth >= 5 ? 4 : revenueGrowth >= 0 ? 3 : 0;
+  if (ocfToProfit !== null) earningsQualityScore += ocfToProfit >= 100 ? 6 : ocfToProfit >= 80 ? 5 : ocfToProfit >= 60 ? 3 : 0;
+  if (roe !== null) earningsQualityScore += roe >= 18 ? 5 : roe >= 12 ? 4 : roe >= 8 ? 2 : 0;
+  if (toNumber(growth.marginTrend) !== null && Number(growth.marginTrend) >= 0) earningsQualityScore += 2;
+  earningsQualityScore = Number(clampScore(earningsQualityScore, 0, 25).toFixed(1));
+  let balanceSheetScore = 0;
+  const debtToAssets = toNumber(financial.debtToAssets);
+  const netDebt = toNumber(financial.netDebt);
+  if (debtToAssets !== null) balanceSheetScore += debtToAssets <= 40 ? 5 : debtToAssets <= 60 ? 4 : debtToAssets <= 70 ? 2 : 0;
+  if (ocfToProfit !== null) balanceSheetScore += ocfToProfit >= 100 ? 3 : ocfToProfit >= 60 ? 2 : 0;
+  if (netDebt !== null) balanceSheetScore += netDebt <= 0 ? 2 : 0;
+  balanceSheetScore = Number(clampScore(balanceSheetScore, 0, 10).toFixed(1));
+  const trapDefenseScore = Number(clampScore(10 - Number(trap.index || 0) / 10, 0, 10).toFixed(1));
+  const currentLowScore = Number(clampScore(
+    absoluteScore + industryRelativeScore + earningsQualityScore + balanceSheetScore + trapDefenseScore,
+  0, 100).toFixed(1));
+  const deepValue = qualityPass && !cyclicalPeakRisk && currentLowScore >= 75 && (
+    bankDeepValue || industryDiscount === null || industryDiscount >= 15
+  );
+  const modestValue = qualityPass && !cyclicalPeakRisk && currentLowScore >= 60;
+
+  let status = "当前估值待补";
+  if (trap.risk === "高") status = "低估陷阱风险";
+  else if (!currentValuationValid) status = "当前估值待补";
+  else if (cyclicalPeakRisk) status = "周期盈利需中枢化";
+  else if (deepValue) status = "当前深度低估";
+  else if (modestValue) status = "当前估值偏低";
+  else status = "当前估值合理";
+
+  const reasons = [];
+  if (valuation.pe !== null) reasons.push(`PE ${valuation.pe}倍`);
+  if (valuation.pb !== null) reasons.push(`PB ${valuation.pb}倍`);
+  if (industryDiscount !== null) {
+    reasons.push(industryDiscount >= 0 ? `较行业中位数折价${industryDiscount}%` : `较行业中位数溢价${Math.abs(industryDiscount)}%`);
+  }
+  if (profitGrowth !== null) reasons.push(`当前利润增速${profitGrowth}%`);
+  if (ocfToProfit !== null) reasons.push(`经营现金流/利润${ocfToProfit}%`);
+  if (cyclicalPeakRisk) reasons.push("周期利润高增，需用3年中枢盈利复核");
+
+  return {
+    status,
+    valid: currentValuationValid,
+    deepValue,
+    modestValue,
+    cyclicalPeakRisk,
+    financialEvidenceCount,
+    qualityPass,
+    score: currentLowScore,
+    components: {
+      absoluteValuation: absoluteScore,
+      industryDiscount: industryRelativeScore,
+      currentEarningsQuality: earningsQualityScore,
+      balanceSheetSafety: balanceSheetScore,
+      trapDefense: trapDefenseScore
+    },
+    historicalPercentileStatus: "待接入历史估值序列",
+    reason: reasons.join("；") || "当前估值或财务证据不足"
+  };
+}
+
 function futureMarketCapSpace(row, valuation, growth, financial, industry) {
   const current = Number(row.marketCapYi);
   if (!Number.isFinite(current) || current <= 0) return { targetMcapYi: null, upsideMultiple: null, method: "市值数据不足" };
@@ -3637,6 +3731,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
       const moat = moatQualityScore(financial, override);
       const technicalScore = valueTechnicalEntryScore(row);
       const trap = valueTrapDetection(valuation, growth, financial, industry);
+      const currentValue = currentUndervaluationAssessment(valuation, growth, financial, industry, trap);
       const futureSpace = unifiedResearch?.valuation?.rankingEligible
         ? {
             targetMcapYi: unifiedResearch.valuation.strategicProbabilityWeighted?.marketCapYi ?? null,
@@ -3645,13 +3740,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
           }
         : { targetMcapYi: null, upsideMultiple: null, method: unifiedResearch?.valuation?.explanation || "统一估值未通过" };
       const compositeScore = Number(clampScore(valuation.score + growth.score + industry.score + moat.score + technicalScore, 0, 100).toFixed(1));
-      const investmentStatus = !unifiedResearch?.valuation?.valid
-        ? "成长保留/估值待补"
-        : trap.risk === "高"
-        ? "低估陷阱风险"
-        : valuation.score >= 19 && compositeScore >= 72
-          ? "深度低估"
-          : "合理低估";
+      const investmentStatus = currentValue.status;
       const phase = trap.risk === "高"
         ? "先排除价值陷阱"
         : compositeScore >= 82 && growth.score >= 20 && industry.score >= 20
@@ -3678,6 +3767,14 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         moatScore: moat.score,
         technicalScore,
         valuation,
+        currentValue,
+        currentValuationValid: currentValue.valid,
+        currentLowScore: currentValue.score,
+        currentLowComponents: currentValue.components,
+        historicalValuationStatus: currentValue.historicalPercentileStatus,
+        currentValuationReason: currentValue.reason,
+        currentDiscountPct: valuation.relativeDiscountPct,
+        industryValuationMedians: valuation.industryMedians,
         growth,
         moat,
         valueTrapIndex: trap.index,
@@ -3685,8 +3782,9 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         valueTrapReasons: trap.reasons,
         valuationValid: Boolean(unifiedResearch?.valuation?.valid),
         valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible),
+        futureValuationStatus: unifiedResearch?.valuation?.rankingEligible ? "未来估值可用" : "未来估值待补",
         growthRankingEligible: growth.score >= 18 || industry.score >= 20,
-        recommendationEligible: Boolean(unifiedResearch?.valuation?.rankingEligible) && trap.risk !== "高",
+        recommendationEligible: currentValue.valid && trap.risk !== "高" && !currentValue.cyclicalPeakRisk,
         valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || [],
         valuationWarnings: unifiedResearch?.valuation?.warnings || [],
         valuationMethod: unifiedResearch?.valuation?.method || null,
@@ -3706,12 +3804,14 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         maximumRisk,
         logic: override?.growthWhy || prior.logic || `${industry.label}需要同时验证成长、产业地位与估值，不能只因PE/PB低而入选。`,
         keyCheck: `核验${financial.reportPeriod || "最新财报"}、行业排名、经营现金流与下一期订单；技术面只决定买点。`,
-        action: !unifiedResearch?.valuation?.valid
-          ? "保留成长研究排名；补齐产业份额和未来盈利后再给目标价，不因估值缺失剔除。"
-          : trap.risk === "高"
+        action: trap.risk === "高"
           ? "暂不参与，先等收入、利润、ROE或现金流至少两项改善。"
+          : currentValue.cyclicalPeakRisk
+            ? "当前低PE可能来自周期盈利高点；先用三年中枢利润复核，再决定是否具备安全边际。"
+          : !currentValue.valid
+            ? "当前低估证据不足；补齐本期盈利、现金流和行业估值中位数后再下结论。"
           : compositeScore >= 82
-            ? "进入重点研究；等回踩承接或放量突破再分批验证。"
+            ? "当前估值与成长质量进入重点研究；未来目标市值另按产业和盈利情景验证。"
             : "进入滚动观察，等待财报和产业催化进一步确认。",
         dayPct: row.dayPct,
         amount: amountText(row.amountRaw),
@@ -5175,12 +5275,10 @@ function compactDashboardForModel(dashboard) {
       trendStartupScore: c.trendStartupScore,
       capitalEntryScore: c.capitalEntryScore,
       industryCatalystScore: c.industryCatalystScore,
-      upsideSpaceScore: c.upsideSpaceScore,
+      moatScore: c.moatScore,
       mainRiseProbability: c.mainRiseProbability,
       dayPct: c.dayPct,
       marketCapYi: c.marketCapYi,
-      targetMcapYi: c.targetMcapYi,
-      upsideMultiple: c.upsideMultiple,
       quarterReturn: c.quarterReturn,
       yearReturn: c.yearReturn,
       distanceToHighPct: c.distanceToHighPct,
@@ -5681,7 +5779,7 @@ async function main() {
     && Array.isArray(previous.oversoldValueIdeas)
     && previous.oversoldValueIdeas.length;
   const dailyCandidates = marketWideSnapshot.length
-    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode, companyResearchResult.byCode)
+    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode)
     : hasPreviousFullMarketCandidates
       ? previous.candidates
       : buildCandidates(candidateQuotes, previous, candidateWeeklyProfiles, candidateMarketCaps);
@@ -5780,7 +5878,7 @@ async function main() {
       ? `估值质量扫描：本次全A行情源失败，暂沿用上一版全A结果；不把样本池冒充全市场`
       : "估值质量扫描：全A快照失败，本次仅有样本池，占位不作为强结论";
   const candidateScanScopeText = marketWideSnapshot.length
-    ? `强弹性候选：${marketWideSource}${marketWideSnapshot.length}只全市场预筛；补取前72只周线历史，按趋势启动25、资金进入25、产业催化25、上涨空间25评分；只保留爬坡期/主升初期且总分不低于65的标的`
+    ? `强弹性候选：${marketWideSource}${marketWideSnapshot.length}只全市场预筛；总市值30亿-800亿元，补取前72只周线历史，按趋势启动30、资金进入30、产业催化30、竞争壁垒10评分；不使用未来估值，只保留爬坡期/主升初期且总分不低于65的标的`
     : hasPreviousFullMarketCandidates
       ? `强弹性候选：本次全A行情源失败，暂沿用上一版全A候选；等待下一次云端刷新`
       : "强弹性候选：全A快照失败，本次仅有手工池占位，不作为正式全市场选股";
@@ -5952,8 +6050,8 @@ export {
   elasticityFailureReasons,
   elasticityFundsScore,
   elasticityIndustryScore,
+  elasticityMoatScore,
   elasticityProbabilityStars,
-  elasticitySpaceScore,
   elasticityStartupPhase,
   elasticityTrendScore,
   buildInstitutionalGrowthResearch,
