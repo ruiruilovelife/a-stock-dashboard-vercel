@@ -91,6 +91,8 @@ assert.equal(lossSoftware.valuation.method, "PS");
 const semiconductor = results[5];
 assert.ok(semiconductor.valuation.futureScenarios.neutral.marketCapYi > semiconductor.valuation.scenarios.neutral.marketCapYi, "成长型公司三年估值未体现未来增长");
 assert.ok(semiconductor.valuation.forwardAssumptions.evidenceCount >= 2);
+assert.equal(semiconductor.valuation.rankingEligible, false, "缺少未来盈利基数的公司不得进入估值空间排名");
+assert.ok(semiconductor.valuation.strategicProbabilityWeighted?.marketCapYi > 0, "缺少概率加权研究情景");
 
 const noGrowth = buildCompanyResearchSnapshot(company("300999", "缺成长数据样本", "半导体材料"), { reportPeriod: "20251231" }, {}, context);
 assert.equal(noGrowth.valuation.valid, false);

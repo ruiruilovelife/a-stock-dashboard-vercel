@@ -63,6 +63,9 @@ assert.equal(research.valuation.actionEligible, true);
 assert.equal(research.valuation.audit.earningsSource, "业绩预告分期年化");
 assert.ok(research.valuation.audit.guidanceAudit.annualized.neutral > 50);
 assert.ok(research.valuation.scenarios.neutral.targetPrice > research.market.close, "业绩预告未能进入未来估值");
+assert.equal(research.valuation.rankingEligible, true, "有业绩预告的公司应可进入估值空间排名");
+assert.ok(research.valuation.probabilityWeighted?.targetPrice > 0, "缺少12个月概率加权估值");
+assert.ok(research.valuation.strategicProbabilityWeighted?.targetPrice > 0, "缺少三年概率加权估值");
 
 console.log(JSON.stringify({
   family: research.industry.familyId,

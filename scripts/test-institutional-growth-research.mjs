@@ -21,7 +21,7 @@ const research = new Map([
     industry: { familyId: "semiconductor_advanced", level2: "半导体设备", confidence: "medium" },
     business: { marketPricingLogic: "国产替代", transformationScore: 45 },
     financial: { latestRevenueGrowth: 45, latestProfitGrowth: 120, profitCagr3Y: 40, marginTrend: 4, roe: 20, roeTrend: 3 },
-    valuation: { rankingEligible: true, futureScenarios: { neutral: { marketCapYi: 480 } }, invalidReasons: [] }
+    valuation: { rankingEligible: true, strategicProbabilityWeighted: { marketCapYi: 480 }, futureScenarios: { neutral: { marketCapYi: 480 } }, invalidReasons: [] }
   }],
   ["300003", {
     industry: { familyId: "generic_industrial", level2: "工业设备", confidence: "medium" },

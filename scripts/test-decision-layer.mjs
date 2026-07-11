@@ -55,6 +55,8 @@ assert.equal(events[0].credibility, "高");
 assert.equal(advice.items[0].valuationDistance.neutralTargetPrice, 95);
 assert.equal(health.degraded, false);
 assert.equal(chief.marketStage.regime, "结构性牛市");
+const lowQualityChief = buildChiefDecision({ marketRegime: { regime: "震荡市/结构轮动", score: 0, summary: "宽度尚可", positionGuide: "中性仓位" }, indices: [], internals: { sampleSize: 5000 }, portfolioAdvice: advice, events: [{ title: "未筛出可靠财经候选", importance: "高", credibility: "低", source: "网页搜索" }], dataHealth: health, guidanceTarget: "下一交易日" });
+assert.equal(lowQualityChief.coreConclusions.length, 1, "低可信度搜索失败不得占据首席核心结论");
 assert.ok(industry.trackCount >= 60);
 assert.ok(industry.categories.flatMap(item => item.tracks).find(item => item.name === "AI算力与数据中心").companies.some(item => item.code === "000977"));
 

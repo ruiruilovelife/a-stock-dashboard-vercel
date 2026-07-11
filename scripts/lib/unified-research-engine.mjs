@@ -393,6 +393,27 @@ function scenarioValue(method, scenario, parameters, bases, adjustment, financia
   };
 }
 
+function probabilityWeightedScenario(scenarios, bases, confidence = "low") {
+  const weightSets = {
+    high: { conservative: 0.2, neutral: 0.55, optimistic: 0.25 },
+    medium: { conservative: 0.3, neutral: 0.5, optimistic: 0.2 },
+    low: { conservative: 0.45, neutral: 0.4, optimistic: 0.15 }
+  };
+  const weights = weightSets[confidence] || weightSets.low;
+  const available = SCENARIOS.filter(name => Number(scenarios?.[name]?.marketCapYi) > 0);
+  if (!available.length) return null;
+  const totalWeight = available.reduce((sum, name) => sum + weights[name], 0);
+  const marketCapYi = available.reduce((sum, name) => sum + Number(scenarios[name].marketCapYi) * weights[name], 0) / totalWeight;
+  const roundedMarketCapYi = round(marketCapYi, 0);
+  return {
+    marketCapYi: roundedMarketCapYi,
+    targetPrice: bases.totalSharesYi ? round(roundedMarketCapYi / bases.totalSharesYi, 2) : null,
+    method: "PROBABILITY_WEIGHTED_SCENARIOS",
+    weights,
+    sourceMethods: Object.fromEntries(available.map(name => [name, scenarios[name].method]))
+  };
+}
+
 function validateValuation({ company, industry, business, financial, bases, method, scenarios, futureScenarios, forwardAssumptions, marketStamp, financialStamp }) {
   const invalidReasons = [];
   const warnings = [];
@@ -468,14 +489,6 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     }
   }
 
-  const validation = validateValuation({ company, industry, business, financial, bases, method, scenarios, futureScenarios, forwardAssumptions, marketStamp: stamps.market, financialStamp: stamps.financial });
-  const neutralMcap = futureScenarios.neutral?.marketCapYi;
-  const upsideMultiple = validation.valid && neutralMcap && bases.currentMcapYi ? round(neutralMcap / bases.currentMcapYi, 2) : null;
-  const twelveMonthMcap = scenarios.neutral?.marketCapYi;
-  const twelveMonthUpsideMultiple = validation.valid && twelveMonthMcap && bases.currentMcapYi ? round(twelveMonthMcap / bases.currentMcapYi, 2) : null;
-  const rankingEligible = validation.valid
-    && !(industry.familyId === "insurance" && !bases.embeddedValueYi)
-    && !(industry.familyId === "utilities" && !numberOrNull(financial.dividendYieldPct));
   const forwardEvidenceCount = [
     financial.consensusProfitYi,
     financial.forwardProfitYi,
@@ -488,6 +501,22 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     evidence.forwardProfitYi,
     evidence.forwardRevenueYi
   ].filter(value => numberOrNull(value) !== null).length;
+  const validation = validateValuation({ company, industry, business, financial, bases, method, scenarios, futureScenarios, forwardAssumptions, marketStamp: stamps.market, financialStamp: stamps.financial });
+  const scenarioConfidence = forwardEvidenceCount >= 2 && forwardAssumptions.confidence === "high"
+    ? "high"
+    : forwardEvidenceCount >= 1 && forwardAssumptions.confidence !== "low"
+      ? "medium"
+      : "low";
+  const probabilityWeighted = probabilityWeightedScenario(scenarios, bases, scenarioConfidence);
+  const strategicProbabilityWeighted = probabilityWeightedScenario(futureScenarios, bases, scenarioConfidence);
+  const centralMcap = strategicProbabilityWeighted?.marketCapYi;
+  const upsideMultiple = validation.valid && forwardEvidenceCount > 0 && centralMcap && bases.currentMcapYi ? round(centralMcap / bases.currentMcapYi, 2) : null;
+  const twelveMonthMcap = probabilityWeighted?.marketCapYi;
+  const twelveMonthUpsideMultiple = validation.valid && forwardEvidenceCount > 0 && twelveMonthMcap && bases.currentMcapYi ? round(twelveMonthMcap / bases.currentMcapYi, 2) : null;
+  const rankingEligible = validation.valid
+    && forwardEvidenceCount > 0
+    && !(industry.familyId === "insurance" && !bases.embeddedValueYi)
+    && !(industry.familyId === "utilities" && !numberOrNull(financial.dividendYieldPct));
   const actionEligible = validation.valid && forwardEvidenceCount > 0;
   return {
     engineVersion: valuationConfig.parameterVersion,
@@ -499,6 +528,9 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     bases,
     scenarios,
     futureScenarios,
+    probabilityWeighted,
+    strategicProbabilityWeighted,
+    centralValuationMethod: "概率加权情景估值",
     forwardAssumptions,
     conservative: scenarios.conservative,
     neutral: scenarios.neutral,
@@ -514,7 +546,7 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     warnings: validation.warnings,
     confidence: validation.valid ? lowerConfidence(industry.parameters.confidence, industry.confidence, business.transformationConfidence === "low" && business.inTransition ? "low" : "high") : "low",
     explanation: validation.valid
-      ? `${industry.level2}采用${scenarios.neutral?.method || method}；成长排名使用三年情景。${actionEligible ? "已取得未来盈利基数，可辅助持仓动作。" : "未来盈利基数未独立确认，情景值不用于买卖动作。"}`
+      ? `${industry.level2}按${scenarios.neutral?.method || method}建立保守/中性/乐观情景，中央估值使用概率加权而非直接取中性值。${actionEligible ? "已取得未来盈利基数，可辅助持仓动作。" : "未来盈利基数未独立确认，仅保留成长研究，不输出空间排名和买卖动作。"}`
       : "估值结果异常、关键数据不足或估值逻辑无法验证，暂不参与排名。",
     audit: {
       currentMcapYi: bases.currentMcapYi,
@@ -536,6 +568,9 @@ function buildValuation(company, financial, industry, business, evidence, stamps
       forwardGrowthRates: forwardAssumptions.rates,
       twelveMonthNeutralMcapYi: scenarios.neutral?.marketCapYi,
       strategicNeutralMcapYi: futureScenarios.neutral?.marketCapYi,
+      probabilityWeightedMcapYi: probabilityWeighted?.marketCapYi,
+      strategicProbabilityWeightedMcapYi: strategicProbabilityWeighted?.marketCapYi,
+      scenarioWeights: strategicProbabilityWeighted?.weights,
       unit: "亿元/亿股/元",
       parameterVersion: valuationConfig.parameterVersion
     }
