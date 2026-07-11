@@ -654,10 +654,11 @@
         const tracked = state.trackedCandidates || [];
         html = `
           <div class="card notice dense">
-            <h2>主升前爬坡候选池</h2>
-            <p>这页不再追“已经暴涨的龙头”，重点找：周线刚从无人区走出来、资金开始持续进场、产业逻辑正在变强、市场共识还没完全形成的票。</p>
+            <h2>AI主升启动雷达</h2>
+            <p>目标是发现未来1-3个月可能进入主升浪的股票，不把“今天涨得好”当成核心依据。评分只看四件事：趋势刚启动、资金连续进入、产业催化可持续、当前仍有上涨空间。</p>
             <p><b>本次扫描：</b>${state.meta?.candidateScanScope || "等待全市场候选扫描结果"}。</p>
-            <p><b>筛选顺序：</b>先看周K硬条件，再看量能台阶，然后看80-300亿市值弹性、行业方向和财务/公告边际改善。日K只用于买点，不用于先选票。</p>
+            <p><b>模型权重：</b>趋势启动25分 + 资金进入25分 + 产业催化25分 + 上涨空间25分。爬坡期、主升初期优先；加速期、高位风险降级；近一年上涨超过200%不进入正式候选。</p>
+            <p><b>类型排序：</b>产业趋势型 &gt; 周期反转型 &gt; 资金驱动型。资金强度主要采用连续数周成交额台阶、上涨放量/回调缩量和非天量见顶代理；没有可靠大单净流入数据时明确不编造。</p>
             <p><b>跟踪规则：</b>从入选日开始计算累计涨跌；30 天内如果再次入选，会延长跟踪周期；超过 30 天没有再次入选，就从跟踪池移除。</p>
             <p><b>宏观过滤：</b>${macro.summary || "候选股必须结合海外科技、亚洲半导体、汇率和政策环境判断。"}</p>
             <p><b>全市场口径：</b>候选股不只看科技。每天从科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链和军工低空里同台打分；如果资金不在科技，非科技候选优先级会上调。</p>
@@ -665,42 +666,41 @@
             <p><b>美股涨幅榜映射：</b>如果美股涨幅榜集中出现AI硬件、光模块、电力基础设施、金融科技或创新药，A股候选池会优先看对应映射方向；单只美股异动不算主线。</p>
             <p><b>日韩涨幅榜映射：</b>日本主要验证半导体设备、机器人、汽车电子；韩国主要验证存储/HBM、电池材料和互联网风险偏好。涨幅榜必须看板块集体性和涨幅逻辑。</p>
           </div>
-          <div class="section card"><h2>今日 5 只爬坡候选</h2>
-            <table><thead><tr><th>排名</th><th>股票</th><th>主线/市值</th><th>周K位置</th><th>评分拆解</th><th>阶段/今日</th><th>判断/财务边际</th><th>买点</th><th>禁买/失败</th></tr></thead><tbody>
+          <div class="section card"><h2>今日 5 只主升启动候选</h2>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>排名</th><th>股票</th><th>启动阶段</th><th>强弹性评分</th><th>资金强度</th><th>产业催化</th><th>空间赔率</th><th>主升概率/类型</th><th>失败风险</th></tr></thead><tbody>
               ${candidates.map((c, i) => `<tr>
                 <td>${i + 1}</td>
-                <td><b>${c.name}</b><br><span class="muted">${c.code || ""}</span></td>
-                <td>${c.theme || "-"}<br><span class="muted">总市值：${c.marketCapYi ? `${c.marketCapYi}亿` : "待取数"}</span></td>
-                <td><span class="muted">3个月：${fmtPct(c.quarterReturn)}</span><br><span class="muted">1年：${fmtPct(c.yearReturn)}</span><br><span class="muted">距52周高：${fmtPct(c.distanceToHighPct)}</span><br><span class="muted">20周线：${c.closeAbove20w ? "上方" : "待确认"}；均线：${c.maQueue ? "排队" : "未排队"}；量能：${c.volumeStairPass ? "上台阶" : "待确认"}</span></td>
-                <td><b>${c.climbScore ?? c.score}/10</b><br><span class="muted">5倍相似度：${c.fiveXScore ?? "-"} / 10</span><br><span class="muted">周线${c.weeklyTrendScore ?? "-"} 量能${c.volumeScore ?? "-"} 市值${c.marketCapScore ?? "-"} 行业${c.industryScore ?? "-"} 财务${c.financialScore ?? "-"} 结构${c.structureScore ?? "-"}</span></td>
-                <td><b>${c.phase || "-"}</b><br><span class="${pctClass(c.dayPct)}">${fmtPct(c.dayPct)}</span><br><span class="muted">热度：${c.heatLevel || "-"}</span></td>
-                <td>${c.technical || "-"}<br><span class="muted">${c.news || ""}</span><br><span class="muted">5倍模型：${c.fiveXRead || "待确认"}</span><br><span class="muted">财务/公告边际：${c.financialEdge || "待确认"}</span><br><span class="muted">${c.selectionReason || ""}</span></td>
-                <td>${c.buyPoint || c.trigger || "-"}</td>
-                <td>${c.noBuySignal || c.fail || "-"}<br><span class="muted">${c.fail || ""}</span></td>
+                <td><b>${c.name}</b><br><span class="muted">${c.code || ""}</span><br><span class="muted">${c.theme || "-"}</span></td>
+                <td><b>${c.phase || "待确认"}</b><br><span class="muted">3个月 ${fmtPct(c.quarterReturn)}；1年 ${fmtPct(c.yearReturn)}</span><br><span class="muted">20/60周线：${c.closeAbove20w ? "上" : "下"}/${c.closeAbove60w ? "上" : "下"}；长期整理：${c.longConsolidation ? "是" : "否"}</span></td>
+                <td><b>${c.elasticityScore ?? c.score ?? "-"}/100</b><br><span class="muted">趋势 ${c.trendStartupScore ?? "-"}/25<br>资金 ${c.capitalEntryScore ?? "-"}/25<br>产业 ${c.industryCatalystScore ?? "-"}/25<br>空间 ${c.upsideSpaceScore ?? "-"}/25</span></td>
+                <td><b>${c.capitalStrength ?? "-"}/10</b><br><span class="muted">量能台阶：${c.volumeStairPass ? "确认" : "未确认"}<br>涨放跌缩：${c.upDownVolumePass ? "确认" : "未确认"}<br>换手率：${c.turnover ?? "-"}%</span></td>
+                <td><b>${c.industryTier || "-"}级</b> ${c.industryLabel || c.theme || "-"}<br>${c.industryCatalyst || "等待订单、政策、产品或业绩催化"}<br><span class="muted">${c.financialEdge || "财务边际待确认"}</span></td>
+                <td>当前 ${c.marketCapYi ?? "-"}亿<br>合理情景 ${c.targetMcapYi ?? "待验证"}亿<br><b>${c.upsideMultiple ? `${c.upsideMultiple}倍` : "待验证"}</b><br><span class="muted">${c.targetMethod || "情景模型待补"}</span></td>
+                <td>${stars(c.mainRiseProbability || 0)}<br><b>${c.type || "待分类"}</b><br><span class="muted">${c.buyPoint || "等待右侧确认"}</span></td>
+                <td>${(c.failureReasons || [c.risk || "产业、资金或业绩不及预期"]).map(x => `• ${x}`).join("<br>")}</td>
               </tr>`).join("")}
-            </tbody></table>
+            </tbody></table></div>
           </div>
           <div class="section card"><h2>1个月滚动跟踪池（最多100只）</h2>
-            <p class="muted">只保留当前规则确认过、或历史评分仍不低于 6.5 的票；旧逻辑遗留、评分不足、没有再入选证据的股票会自动移除。累计涨跌从首次跟踪日的入选价开始计算。</p>
-            <table><thead><tr><th>股票</th><th>分数/阶段</th><th>首次跟踪</th><th>跟踪天数</th><th>最近入选</th><th>入选价/现价</th><th>今日涨跌</th><th>累计涨跌</th><th>主线</th><th>状态</th></tr></thead><tbody>
+            <p class="muted">只保留新版主升启动模型评分不低于65、且仍处在爬坡期或主升初期的股票。旧模型遗留、高位加速、评分降级和30天未再次入选的股票会自动移除。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>评分/阶段</th><th>主升概率/类型</th><th>首次跟踪</th><th>最近入选</th><th>入选价/现价</th><th>今日/累计</th><th>产业催化</th><th>风险/状态</th></tr></thead><tbody>
               ${tracked.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
-                <td><b>${t.climbScore ?? t.score ?? "-"}/10</b><br><span class="muted">${t.phase || "合格跟踪"}</span></td>
-                <td>${t.firstTrackedDate || "-"}</td>
-                <td>${t.trackingDays ?? "-"}</td>
+                <td><b>${t.elasticityScore ?? t.score ?? "-"}/100</b><br><span class="muted">${t.phase || "合格跟踪"}</span></td>
+                <td>${stars(t.mainRiseProbability || 0)}<br>${t.type || "待分类"}</td>
+                <td>${t.firstTrackedDate || "-"}<br><span class="muted">${t.trackingDays ?? "-"}天</span></td>
                 <td>${t.lastSelectedDate || "-"}</td>
                 <td>${t.entryPrice ?? "-"}<br>${t.currentPrice ?? "-"}</td>
-                <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}</td>
-                <td class="${pctClass(t.returnPct)}">${fmtPct(t.returnPct)}</td>
-                <td>${t.theme || "-"}</td>
-                <td>${t.status || "-"}</td>
+                <td class="${pctClass(t.dayPct)}">${fmtPct(t.dayPct)}<br><span class="${pctClass(t.returnPct)}">累计 ${fmtPct(t.returnPct)}</span></td>
+                <td>${t.theme || "-"}<br><span class="muted">产业 ${t.industryCatalystScore ?? "-"}/25</span></td>
+                <td>${t.risk || "产业、资金和业绩持续验证"}<br><span class="muted">${t.status || "-"}</span></td>
               </tr>`).join("")}
-            </tbody></table>
+            </tbody></table></div>
           </div>
           <div class="section grid3">
-            ${card("周K第一", "<p>股价在20周线上方，5/10/20周线排队，20周线向上，近3个月涨幅20%-80%，近1年不超过200%，靠近或突破52周新高。</p>")}
-            ${card("量能和市值", "<p>成交额中枢慢慢上台阶，上涨放量下跌缩量，突破不放历史天量；总市值优先80-300亿，兼顾基本面稳定和弹性。</p>")}
-            ${card("买点纪律", "<p>只看两类：刚突破平台但没连续大涨，或突破后第一次回踩10日线/10周线不破。连续大阳、天量长上影、跌破20周线一律不追。</p>")}
+            ${card("趋势启动", "<p>20周和60周趋势、长期整理、突破位置共同判断阶段。优先爬坡期与主升初期，不拿已经加速的股票冒充启动候选。</p>")}
+            ${card("持续资金", "<p>看连续数周成交额台阶、上涨放量和回调缩量，不按单日涨停打高分。异常天量或高换手冲高会降低资金质量。</p>")}
+            ${card("产业与赔率", "<p>产业趋势、订单/产品/政策/业绩催化必须能持续，同时用三年盈利或收入情景估算合理市值；没有空间赔率就不追。</p>")}
           </div>
         `;
       }
@@ -822,7 +822,7 @@
             <h2>正式入池规则</h2>
             <table><thead><tr><th>规则</th><th>解释</th></tr></thead><tbody>
               ${futureRules.map((x, i) => `<tr><td><b>${i + 1}</b></td><td>${x}</td></tr>`).join("")}
-            </tbody></table>
+            </tbody></table></div>
           </div>
           <div class="section card" id="five-x-samples">
             <h2>历史样本：一年5倍级别股票怎么出现</h2>
@@ -841,7 +841,7 @@
             <h2>历史共性拆解</h2>
             <table><thead><tr><th>维度</th><th>5倍股常见特征</th><th>每天怎么用</th></tr></thead><tbody>
               ${traits.map(x => `<tr><td><b>${x.dimension}</b></td><td>${x.rule}</td><td>${x.use}</td></tr>`).join("")}
-            </tbody></table>
+            </tbody></table></div>
           </div>
           <div class="section grid3">
             ${card("进入候选池", `<p>${rules.slice(0, 2).join("</p><p>")}</p>`)}

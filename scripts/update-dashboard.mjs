@@ -1920,16 +1920,23 @@ async function fetchWeekly(symbol) {
 }
 
 function buildWeeklyProfile(klines) {
-  const last52 = klines.slice(-52);
+  const last120 = klines.slice(-120);
+  const last52 = last120.slice(-52);
   const closes = last52.map(k => k.close);
   const highs = last52.map(k => k.high);
+  const lows = last52.map(k => k.low);
   const amounts = last52.map(k => k.amount);
   const last = closes.at(-1);
   const ma5 = average(closes.slice(-5));
   const ma10 = average(closes.slice(-10));
   const ma20 = average(closes.slice(-20));
   const ma20Prev = average(closes.slice(-24, -4));
+  const closes120 = last120.map(k => k.close);
+  const ma60 = average(closes120.slice(-60));
+  const ma60Prev = average(closes120.slice(-64, -4));
   const high52 = Math.max(...highs.filter(Number.isFinite));
+  const recent26High = Math.max(...highs.slice(-26).filter(Number.isFinite));
+  const recent26Low = Math.min(...lows.slice(-26).filter(Number.isFinite));
   const quarterBase = closes.at(-13);
   const yearBase = closes.at(0);
   const recent4Amount = average(amounts.slice(-4));
@@ -1955,6 +1962,8 @@ function buildWeeklyProfile(klines) {
   const volumeStairPass = recent4Amount > prior20Amount * 1.12;
   const upDownVolumePass = !downAmounts.length || average(upAmounts) > average(downAmounts) * 1.05;
   const noBlowoffPass = !Number.isFinite(amountHigh52) || lastWeekAmount < amountHigh52 * 0.92;
+  const consolidationRangePct = recent26Low > 0 ? ((recent26High - recent26Low) / recent26Low) * 100 : null;
+  const longConsolidation = Number.isFinite(consolidationRangePct) && consolidationRangePct <= 45;
 
   return {
     weeklyTrendPass,
@@ -1963,8 +1972,12 @@ function buildWeeklyProfile(klines) {
     upDownVolumePass,
     noBlowoffPass,
     closeAbove20w: last > ma20,
+    closeAbove60w: Number.isFinite(ma60) ? last > ma60 : null,
     maQueue: ma5 > ma10 && ma10 > ma20,
     ma20Rising: ma20 > ma20Prev,
+    ma60Rising: Number.isFinite(ma60) && Number.isFinite(ma60Prev) ? ma60 > ma60Prev : null,
+    longConsolidation,
+    consolidationRangePct: Number.isFinite(consolidationRangePct) ? Number(consolidationRangePct.toFixed(1)) : null,
     quarterReturn: Number(quarterReturn.toFixed(1)),
     yearReturn: Number(yearReturn.toFixed(1)),
     distanceToHighPct: Number(distanceToHighPct.toFixed(1)),
@@ -2528,76 +2541,211 @@ function buildCandidates(quotes, previous, weeklyProfiles, marketCaps) {
   }));
 }
 
-function buildMarketWideCandidates(snapshot) {
+function elasticityIndustryProfile(row) {
+  const override = valueResearchOverride(row.code);
+  return valueIndustryProfile(row, override);
+}
+
+function elasticityCandidateType(industry, row) {
+  const text = `${industry.label || ""} ${industry.chain || ""} ${row.name || ""}`;
+  if (/有色|煤炭|化工|钢铁|石油|航运|养殖|猪肉|稀土|资源|制冷剂/.test(text)) return "周期反转型";
+  if (industry.tier === "S" || industry.tier === "A") return "产业趋势型";
+  return "资金驱动型";
+}
+
+function elasticityStartupPhase(weekly) {
+  if (!weekly) return "数据待确认";
+  const quarter = Number(weekly.quarterReturn);
+  const year = Number(weekly.yearReturn);
+  if (year > 200 || quarter > 90) return "高位风险";
+  if (quarter > 60 || year > 150) return "加速期";
+  if (weekly.weeklyTrendPass && quarter >= 15 && quarter <= 60) return "主升初期";
+  if (weekly.closeAbove20w && weekly.ma20Rising && quarter >= 0 && quarter <= 45) return "爬坡期";
+  if (weekly.longConsolidation && quarter > -15 && quarter < 20) return "底部";
+  return "底部";
+}
+
+function elasticityTrendScore(weekly, phase) {
+  if (!weekly) return 0;
+  let score = 0;
+  if (weekly.closeAbove20w) score += 4;
+  if (weekly.closeAbove60w) score += 3;
+  if (weekly.ma20Rising) score += 4;
+  if (weekly.ma60Rising) score += 3;
+  if (weekly.maQueue) score += 4;
+  if (weekly.longConsolidation) score += 3;
+  if (phase === "爬坡期" || phase === "主升初期") score += 4;
+  else if (phase === "底部") score += 2;
+  if (phase === "加速期") score -= 5;
+  if (phase === "高位风险") score -= 12;
+  return Number(clampScore(score, 0, 25).toFixed(1));
+}
+
+function elasticityFundsScore(row, weekly) {
+  if (!weekly) return 0;
+  const turnover = Number(row.turnover);
+  const amountYi = Number(row.amountRaw) / 100000000;
+  const dayPct = Number(row.dayPct);
+  let score = 0;
+  if (weekly.volumeStairPass) score += 8;
+  if (weekly.upDownVolumePass) score += 6;
+  if (weekly.noBlowoffPass) score += 4;
+  if (Number.isFinite(turnover) && turnover >= 0.8 && turnover <= 8) score += 3;
+  if (Number.isFinite(amountYi) && amountYi >= 2) score += 2;
+  if (Number.isFinite(dayPct) && dayPct >= -3 && dayPct <= 5) score += 2;
+  if (Number.isFinite(dayPct) && dayPct > 7) score -= 4;
+  return Number(clampScore(score, 0, 25).toFixed(1));
+}
+
+function elasticityIndustryScore(industry, growth) {
+  const base = { S: 21, A: 17, B: 11, C: 7 }[industry.tier] ?? 7;
+  const profitGrowth = Number(growth.latestProfitGrowth ?? growth.profitCagr3Y);
+  const revenueGrowth = Number(growth.latestRevenueGrowth ?? growth.revenueCagr3Y);
+  let catalyst = 0;
+  if (Number.isFinite(profitGrowth) && profitGrowth >= 50) catalyst += 2;
+  else if (Number.isFinite(profitGrowth) && profitGrowth >= 20) catalyst += 1;
+  if (Number.isFinite(revenueGrowth) && revenueGrowth >= 20) catalyst += 1;
+  if (Number(growth.roeTrend) > 0 || Number(growth.marginTrend) > 0) catalyst += 1;
+  return Number(clampScore(base + catalyst, 0, 25).toFixed(1));
+}
+
+function elasticitySpaceScore(upsideMultiple, marketCapYi) {
+  const multiple = Number(upsideMultiple);
+  let score = !Number.isFinite(multiple) ? 6
+    : multiple >= 5 ? 25
+      : multiple >= 3 ? 22
+        : multiple >= 2 ? 18
+          : multiple >= 1.5 ? 14
+            : multiple >= 1.1 ? 9 : 4;
+  if (Number(marketCapYi) >= 50 && Number(marketCapYi) <= 500) score += 1;
+  if (Number(marketCapYi) > 1000) score -= 5;
+  return Number(clampScore(score, 0, 25).toFixed(1));
+}
+
+function elasticityProbabilityStars(score, trendScore, fundsScore, industryScore) {
+  const balanced = Math.min(Number(trendScore), Number(fundsScore), Number(industryScore));
+  if (score >= 88 && balanced >= 18) return 5;
+  if (score >= 80 && balanced >= 15) return 4;
+  if (score >= 72) return 3;
+  if (score >= 65) return 2;
+  return 1;
+}
+
+function elasticityFailureReasons({ weekly, phase, industry, growth, upsideMultiple, fundsScore }) {
+  const reasons = [];
+  if (industry.tier === "C") reasons.push("产业逻辑不足");
+  if (Number(fundsScore) < 15 || !weekly?.volumeStairPass) reasons.push("资金可能只是短炒");
+  if (Number(upsideMultiple) < 1.5) reasons.push("估值或上涨空间不足");
+  if (!weekly?.weeklyTrendPass) reasons.push("周线未确认");
+  if (Number(growth.latestProfitGrowth ?? growth.profitCagr3Y) < 15) reasons.push("业绩兑现不足");
+  if (phase === "加速期" || phase === "高位风险") reasons.push("位置过高，追涨风险大");
+  return reasons.length ? reasons : ["产业催化、资金持续性或下一期业绩任一不及预期"];
+}
+
+function elasticityPrefilter(snapshot, financialByCode) {
   return (snapshot || [])
-    .filter(row => row.buyable)
-    .filter(row => !/^ST|^\*ST/.test(row.name || ""))
+    .filter(row => row.buyable && !/^ST|^\*ST/.test(row.name || ""))
     .filter(row => Number(row.close) > 3)
-    .filter(row => Number(row.marketCapYi) >= 40 && Number(row.marketCapYi) <= 600)
-    .filter(row => Number(row.dayPct) > -2 && Number(row.dayPct) < 8)
-    .filter(row => Number(row.turnover) >= 0.8 && Number(row.turnover) <= 12)
+    .filter(row => Number(row.marketCapYi) >= 30 && Number(row.marketCapYi) <= 1000)
+    .filter(row => Number(row.dayPct) > -5 && Number(row.dayPct) < 7.5)
+    .filter(row => Number(row.turnover) >= 0.3 && Number(row.turnover) <= 12)
     .map(row => {
-      const pe = Number(row.peTtm ?? row.pe);
-      const pb = Number(row.pb);
-      let climbScore = 0;
-      if (Number(row.dayPct) > 0) climbScore += 1.2;
-      if (Number(row.dayPct) > 3) climbScore += 0.8;
-      if (Number(row.amountRaw) / 100000000 >= 3) climbScore += 1.2;
-      if (Number(row.turnover) >= 1.5 && Number(row.turnover) <= 8) climbScore += 1.2;
-      if (Number(row.marketCapYi) >= 80 && Number(row.marketCapYi) <= 300) climbScore += 1.2;
-      else climbScore += 0.6;
-      if (Number.isFinite(pe) && pe > 0 && pe <= 60) climbScore += 0.8;
-      if (Number.isFinite(pb) && pb > 0 && pb <= 5) climbScore += 0.6;
-      climbScore = Number(Math.min(10, climbScore + 1.5).toFixed(1));
-      const fiveXScore = Number(Math.min(10, climbScore + (Number(row.marketCapYi) <= 300 ? 1 : 0)).toFixed(1));
-      return {
-        name: row.name,
-        code: row.code,
-        theme: "全市场快照候选",
-        news: "由全A快照按可买权限、市值、换手、成交额、PE/PB和当日承接筛出；后续必须补周线、财报和产业逻辑。",
-        financialEdge: "待补查公告、财报、ROE、现金流和行业景气",
-        score: climbScore,
-        climbScore,
-        fiveXScore,
-        fiveXRead: fiveXRead(fiveXScore),
-        phase: "全市场初筛/待历史行情",
-        dayPct: row.dayPct,
-        amount: amountText(row.amountRaw),
-        marketCapYi: row.marketCapYi,
-        pe: row.pe,
-        peTtm: row.peTtm,
-        pb: row.pb,
-        turnover: row.turnover,
-        quarterReturn: "待补历史行情",
-        yearReturn: "待补历史行情",
-        distanceToHighPct: "待补历史行情",
-        closeAbove20w: null,
-        maQueue: null,
-        ma20Rising: null,
-        volumeStairPass: null,
-        upDownVolumePass: null,
-        noBlowoffPass: null,
-        positionPass: null,
-        weeklyTrendPass: null,
-        rangePct: null,
-        weeklyTrendScore: "-",
-        volumeScore: "-",
-        structureScore: "-",
-        industryScore: "-",
-        marketCapScore: "-",
-        financialScore: "-",
-        heatLevel: Number(row.dayPct) > 5 ? "偏热" : "不热",
-        technical: "全市场快照初筛通过，但缺少周K/年线/量能历史行情，不能进入强弹性正式候选。",
-        trigger: "补查周K站上20周线、成交额中枢抬升、行业有催化后再升级。",
-        fail: "PE/PB低但利润下修、换手异常放大冲高回落、或补查周线仍在下降趋势。",
-        buyPoint: "补齐周K、年线、量能和财报后再决定是否小仓验证。",
-        noBuySignal: "未完成周线/财报核验前不买；低PE/PB不能替代产业逻辑。",
-        close: row.close,
-        selectionReason: "全市场快照筛出，不来自手工股票池。"
-      };
+      const financial = financialByCode.get(row.code) || fallbackFinancialForValue(row);
+      const growth = growthPotentialScore(financial);
+      const industry = elasticityIndustryProfile(row);
+      const amountYi = Number(row.amountRaw) / 100000000;
+      let prefilterScore = industry.score + growth.score;
+      if (Number(row.marketCapYi) >= 50 && Number(row.marketCapYi) <= 500) prefilterScore += 8;
+      if (Number.isFinite(amountYi) && amountYi >= 2) prefilterScore += 4;
+      if (Number(row.turnover) >= 0.8 && Number(row.turnover) <= 8) prefilterScore += 4;
+      return { row, financial, growth, industry, prefilterScore };
     })
-    .filter(c => c.fiveXScore >= 6.5)
-    .sort((a, b) => b.fiveXScore - a.fiveXScore || b.dayPct - a.dayPct)
+    .sort((a, b) => b.prefilterScore - a.prefilterScore)
+    .slice(0, 72);
+}
+
+async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) {
+  const prefiltered = elasticityPrefilter(snapshot, financialByCode);
+  const weeklyPool = prefiltered.map(({ row }) => [symbolFromCode(row.code), row.name, row.code]);
+  const weeklyProfiles = await fetchWeeklyProfiles(weeklyPool);
+  const scored = prefiltered.map(({ row, financial, growth, industry }) => {
+    const weekly = weeklyProfiles.get(row.code);
+    const phase = elasticityStartupPhase(weekly);
+    const trendScore = elasticityTrendScore(weekly, phase);
+    const fundsScore = elasticityFundsScore(row, weekly);
+    const industryScore = elasticityIndustryScore(industry, growth);
+    const valuation = {
+      pe: toNumber(row.peTtm ?? row.pe),
+      pb: toNumber(row.pb),
+      ps: toNumber(row.psTtm ?? row.ps)
+    };
+    const futureSpace = futureMarketCapSpace(row, valuation, growth, financial, industry);
+    const spaceScore = elasticitySpaceScore(futureSpace.upsideMultiple, row.marketCapYi);
+    const elasticityScore = Number(clampScore(trendScore + fundsScore + industryScore + spaceScore, 0, 100).toFixed(1));
+    const type = elasticityCandidateType(industry, row);
+    const catalyst = valueCatalyst(row, valueResearchOverride(row.code), industry);
+    const failureReasons = elasticityFailureReasons({ weekly, phase, industry, growth, upsideMultiple: futureSpace.upsideMultiple, fundsScore });
+    return {
+      name: row.name,
+      code: row.code,
+      theme: `${industry.tier}级 ${industry.label}`,
+      type,
+      phase,
+      elasticityScore,
+      score: elasticityScore,
+      climbScore: elasticityScore,
+      trendStartupScore: trendScore,
+      capitalEntryScore: fundsScore,
+      industryCatalystScore: industryScore,
+      upsideSpaceScore: spaceScore,
+      capitalStrength: Number((fundsScore / 2.5).toFixed(1)),
+      mainRiseProbability: elasticityProbabilityStars(elasticityScore, trendScore, fundsScore, industryScore),
+      industryTier: industry.tier,
+      industryLabel: industry.label,
+      industryCatalyst: catalyst,
+      futureCatalyst: catalyst,
+      currentMcapYi: row.marketCapYi,
+      marketCapYi: row.marketCapYi,
+      targetMcapYi: futureSpace.targetMcapYi,
+      upsideMultiple: futureSpace.upsideMultiple,
+      targetMethod: futureSpace.method,
+      failureReasons,
+      risk: failureReasons.join("；"),
+      financialEdge: `营收3年CAGR ${growth.revenueCagr3Y ?? "待确认"}%；利润3年CAGR ${growth.profitCagr3Y ?? "待确认"}%；最新利润增速 ${growth.latestProfitGrowth ?? "待确认"}%`,
+      quarterReturn: weekly?.quarterReturn ?? null,
+      yearReturn: weekly?.yearReturn ?? null,
+      distanceToHighPct: weekly?.distanceToHighPct ?? null,
+      closeAbove20w: weekly?.closeAbove20w ?? null,
+      closeAbove60w: weekly?.closeAbove60w ?? null,
+      maQueue: weekly?.maQueue ?? null,
+      ma20Rising: weekly?.ma20Rising ?? null,
+      ma60Rising: weekly?.ma60Rising ?? null,
+      longConsolidation: weekly?.longConsolidation ?? null,
+      consolidationRangePct: weekly?.consolidationRangePct ?? null,
+      volumeStairPass: weekly?.volumeStairPass ?? null,
+      upDownVolumePass: weekly?.upDownVolumePass ?? null,
+      noBlowoffPass: weekly?.noBlowoffPass ?? null,
+      weeklyTrendPass: weekly?.weeklyTrendPass ?? null,
+      dayPct: row.dayPct,
+      amount: amountText(row.amountRaw),
+      turnover: row.turnover,
+      pe: row.pe,
+      peTtm: row.peTtm,
+      pb: row.pb,
+      close: row.close,
+      buyPoint: phase === "主升初期"
+        ? "平台突破后的第一次缩量回踩，或放量突破但单日涨幅不超过5%时分批验证。"
+        : "等待20周线之上缩量回踩不破，随后成交额再次温和放大。",
+      selectionReason: "全A预筛后补取周线历史；由趋势启动、连续资金、产业催化和未来市值空间共同评分。",
+      modelVersion: "主升启动模型100分"
+    };
+  });
+  const typePriority = { "产业趋势型": 3, "周期反转型": 2, "资金驱动型": 1 };
+  return scored
+    .filter(item => item.elasticityScore >= 65)
+    .filter(item => item.phase === "爬坡期" || item.phase === "主升初期")
+    .filter(item => !Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
+    .sort((a, b) => (typePriority[b.type] - typePriority[a.type]) || b.elasticityScore - a.elasticityScore || b.mainRiseProbability - a.mainRiseProbability)
     .slice(0, 5);
 }
 
@@ -2635,14 +2783,13 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
 
   for (const item of previousTracked) {
     if (!item.code) continue;
-    const score = Number(item.climbScore ?? item.score);
+    const score = Number(item.elasticityScore ?? item.climbScore ?? item.score);
     const stillQualified = isBuyableAShareCode(item.code)
+      && item.modelVersion === "主升启动模型100分"
       && Number.isFinite(score)
-      && score >= 6.5
-      && Number(item.fiveXScore ?? 0) >= 6.5
-      && (!Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 230)
-      && item.phase !== "主升后段/趋势锚"
-      && item.phase !== "冲刺后段/等回踩";
+      && score >= 65
+      && (!Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
+      && (item.phase === "爬坡期" || item.phase === "主升初期");
     const last = item.lastSelectedDate || item.firstTrackedDate || today;
     if ((stillQualified && daysBetween(last, today) <= 30) || dailyByCode.has(item.code)) {
       trackedByCode.set(item.code, { ...item });
@@ -2657,8 +2804,18 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
       existing.news = c.news;
       existing.score = c.score;
       existing.climbScore = c.climbScore;
-      existing.fiveXScore = c.fiveXScore;
-      existing.fiveXRead = c.fiveXRead;
+      existing.elasticityScore = c.elasticityScore;
+      existing.trendStartupScore = c.trendStartupScore;
+      existing.capitalEntryScore = c.capitalEntryScore;
+      existing.industryCatalystScore = c.industryCatalystScore;
+      existing.upsideSpaceScore = c.upsideSpaceScore;
+      existing.mainRiseProbability = c.mainRiseProbability;
+      existing.type = c.type;
+      existing.industryCatalyst = c.industryCatalyst;
+      existing.targetMcapYi = c.targetMcapYi;
+      existing.upsideMultiple = c.upsideMultiple;
+      existing.risk = c.risk;
+      existing.modelVersion = c.modelVersion;
       existing.phase = c.phase;
       existing.selectionReason = c.selectionReason;
       existing.status = "今日再次入选，延长跟踪";
@@ -2674,8 +2831,18 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
         news: c.news,
         score: c.score,
         climbScore: c.climbScore,
-        fiveXScore: c.fiveXScore,
-        fiveXRead: c.fiveXRead,
+        elasticityScore: c.elasticityScore,
+        trendStartupScore: c.trendStartupScore,
+        capitalEntryScore: c.capitalEntryScore,
+        industryCatalystScore: c.industryCatalystScore,
+        upsideSpaceScore: c.upsideSpaceScore,
+        mainRiseProbability: c.mainRiseProbability,
+        type: c.type,
+        industryCatalyst: c.industryCatalyst,
+        targetMcapYi: c.targetMcapYi,
+        upsideMultiple: c.upsideMultiple,
+        risk: c.risk,
+        modelVersion: c.modelVersion,
         phase: c.phase,
         selectionReason: c.selectionReason,
         status: "今日新入选"
@@ -2704,8 +2871,8 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
         : item.status || (returnPct >= 10 ? "已明显走强" : returnPct <= -8 ? "跟踪失败风险" : "继续跟踪")
     };
   }).sort((a, b) => {
-    const as = Number(a.climbScore ?? a.score ?? -999);
-    const bs = Number(b.climbScore ?? b.score ?? -999);
+    const as = Number(a.elasticityScore ?? a.climbScore ?? a.score ?? -999);
+    const bs = Number(b.elasticityScore ?? b.climbScore ?? b.score ?? -999);
     if (bs !== as) return bs - as;
     const ar = Number(a.returnPct ?? -999);
     const br = Number(b.returnPct ?? -999);
@@ -4847,12 +5014,18 @@ function compactDashboardForModel(dashboard) {
       name: c.name,
       code: c.code,
       theme: c.theme,
+      type: c.type,
       phase: c.phase,
-      climbScore: c.climbScore,
-      fiveXScore: c.fiveXScore,
-      fiveXRead: c.fiveXRead,
+      elasticityScore: c.elasticityScore,
+      trendStartupScore: c.trendStartupScore,
+      capitalEntryScore: c.capitalEntryScore,
+      industryCatalystScore: c.industryCatalystScore,
+      upsideSpaceScore: c.upsideSpaceScore,
+      mainRiseProbability: c.mainRiseProbability,
       dayPct: c.dayPct,
       marketCapYi: c.marketCapYi,
+      targetMcapYi: c.targetMcapYi,
+      upsideMultiple: c.upsideMultiple,
       quarterReturn: c.quarterReturn,
       yearReturn: c.yearReturn,
       distanceToHighPct: c.distanceToHighPct,
@@ -4860,9 +5033,9 @@ function compactDashboardForModel(dashboard) {
       maQueue: c.maQueue,
       volumeStairPass: c.volumeStairPass,
       financialEdge: c.financialEdge,
-      heatLevel: c.heatLevel,
+      industryCatalyst: c.industryCatalyst,
       buyPoint: c.buyPoint,
-      noBuySignal: c.noBuySignal
+      risk: c.risk
     })),
     oversoldValueIdeas: (dashboard.oversoldValueIdeas || []).map(x => ({
       name: x.name,
@@ -5258,7 +5431,7 @@ async function main() {
     && Array.isArray(previous.oversoldValueIdeas)
     && previous.oversoldValueIdeas.length;
   const dailyCandidates = marketWideSnapshot.length
-    ? buildMarketWideCandidates(marketWideSnapshot)
+    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode)
     : hasPreviousFullMarketCandidates
       ? previous.candidates
       : buildCandidates(candidateQuotes, previous, candidateWeeklyProfiles, candidateMarketCaps);
@@ -5354,7 +5527,7 @@ async function main() {
       ? `估值质量扫描：本次全A行情源失败，暂沿用上一版全A结果；不把样本池冒充全市场`
       : "估值质量扫描：全A快照失败，本次仅有样本池，占位不作为强结论";
   const candidateScanScopeText = marketWideSnapshot.length
-    ? `强弹性候选：${marketWideSource}${marketWideSnapshot.length}只同台初筛；剔除科创/北证、ST、过小/过大市值和评分低于6.5的标的`
+    ? `强弹性候选：${marketWideSource}${marketWideSnapshot.length}只全市场预筛；补取前72只周线历史，按趋势启动25、资金进入25、产业催化25、上涨空间25评分；只保留爬坡期/主升初期且总分不低于65的标的`
     : hasPreviousFullMarketCandidates
       ? `强弹性候选：本次全A行情源失败，暂沿用上一版全A候选；等待下一次云端刷新`
       : "强弹性候选：全A快照失败，本次仅有手工池占位，不作为正式全市场选股";
@@ -5395,6 +5568,15 @@ async function main() {
       holdings
     },
     candidates: dailyCandidates,
+    elasticityModel: {
+      name: "AI主升启动雷达",
+      horizon: "未来1-3个月",
+      weights: { trendStartup: 25, capitalEntry: 25, industryCatalyst: 25, upsideSpace: 25 },
+      preferredPhases: ["爬坡期", "主升初期"],
+      excludedPhases: ["加速期", "高位风险"],
+      minimumScore: 65,
+      typePriority: ["产业趋势型", "周期反转型", "资金驱动型"]
+    },
     fiveXCandidates: fiveXIdeas,
     futureGrowthUniverse: institutionalGrowth.all,
     futureFiveXCandidates,
@@ -5435,6 +5617,14 @@ if (process.env.SKIP_DASHBOARD_MAIN !== "true") {
 }
 
 export {
+  elasticityCandidateType,
+  elasticityFailureReasons,
+  elasticityFundsScore,
+  elasticityIndustryScore,
+  elasticityProbabilityStars,
+  elasticitySpaceScore,
+  elasticityStartupPhase,
+  elasticityTrendScore,
   buildMarketWideValueResearch,
   buildRollingResearchPool,
   fetchEastmoneyAStockSnapshot,

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "update": "node scripts/update-dashboard.mjs",
+    "test:elasticity": "node scripts/test-elasticity-model.mjs",
     "test:value": "node scripts/test-value-quality.mjs"
   }
 }
