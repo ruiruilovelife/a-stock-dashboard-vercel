@@ -5199,8 +5199,6 @@ async function buildModelAnalysis(dashboard, session) {
 
   const model = modelForSession(session);
   const payload = compactDashboardForModel(dashboard);
-  const isDeepSession = session.name === "盘后复盘版" || session.name === "周末复盘版";
-  const modelTimeoutMs = isDeepSession ? 300000 : 120000;
   const prompt = `你是严谨的A股投研分析师。请基于以下仪表盘数据，输出JSON，不要输出Markdown。
 要求：
 1. 不要泛泛罗列新闻，要说明新闻/海外/资金如何影响持仓和候选股。
@@ -5229,10 +5227,12 @@ async function buildModelAnalysis(dashboard, session) {
 }
 数据：${JSON.stringify(payload)}`;
 
-  async function callModel(timeoutMs, attemptLabel) {
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  async function callModel(attemptLabel) {
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(60000),
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json"
@@ -5240,6 +5240,7 @@ async function buildModelAnalysis(dashboard, session) {
       body: JSON.stringify({
         model,
         reasoning: { effort: OPENAI_REASONING_EFFORT },
+        background: true,
         input: [
           {
             role: "system",
@@ -5253,9 +5254,28 @@ async function buildModelAnalysis(dashboard, session) {
       })
     });
     if (!res.ok) {
-      throw new Error(`${attemptLabel}模型接口返回 ${res.status}`);
+      const detail = (await res.text()).slice(0, 500);
+      throw new Error(`${attemptLabel}模型接口返回 ${res.status}：${detail}`);
     }
-    const json = await res.json();
+    let json = await res.json();
+    const responseId = json.id;
+    if (!responseId) throw new Error(`${attemptLabel}模型未返回后台任务编号`);
+    while (["queued", "in_progress"].includes(json.status)) {
+      await sleep(15000);
+      const poll = await fetch(`https://api.openai.com/v1/responses/${responseId}`, {
+        signal: AbortSignal.timeout(60000),
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` }
+      });
+      if (!poll.ok) {
+        const detail = (await poll.text()).slice(0, 500);
+        throw new Error(`${attemptLabel}模型任务查询返回 ${poll.status}：${detail}`);
+      }
+      json = await poll.json();
+    }
+    if (json.status !== "completed") {
+      const failure = json.error?.message || json.incomplete_details?.reason || json.status || "未知状态";
+      throw new Error(`${attemptLabel}模型后台任务未完成：${failure}`);
+    }
     const text = json.output_text
       || (json.output || []).flatMap(item => item.content || []).map(part => part.text || "").join("\n");
     const parsed = parseJsonObject(text);
@@ -5263,7 +5283,7 @@ async function buildModelAnalysis(dashboard, session) {
     return {
       enabled: true,
       model,
-      status: `模型分析已启用（${attemptLabel}，超时上限${Math.round(timeoutMs / 1000)}秒）`,
+      status: `模型分析已启用（${attemptLabel}后台模式，持续等待直至完成）`,
       summary: parsed.summary || "",
       finalCommand: parsed.finalCommand || "",
       actionPriorities: Array.isArray(parsed.actionPriorities) ? parsed.actionPriorities : [],
@@ -5274,17 +5294,13 @@ async function buildModelAnalysis(dashboard, session) {
   }
 
   try {
-    return await callModel(modelTimeoutMs, "深度");
+    return await callModel("深度");
   } catch (error) {
-    try {
-      return await callModel(180000, "深度重试");
-    } catch (retryError) {
-      const message = `模型分析调用失败：${error.message}；重试失败：${retryError.message}`;
-      if (REQUIRE_MODEL_ANALYSIS) {
-        throw new Error(`${message}。已按要求禁止降级，终止本次更新，避免规则版覆盖真实分析。`);
-      }
-      return fallbackModelAnalysis(session, `${message}。本次降级为规则版。`);
+    const message = `模型分析调用失败：${error.message}`;
+    if (REQUIRE_MODEL_ANALYSIS) {
+      throw new Error(`${message}。已按要求禁止降级，终止本次更新，避免规则版覆盖真实分析。`);
     }
+    return fallbackModelAnalysis(session, `${message}。本次降级为规则版。`);
   }
 }
 
