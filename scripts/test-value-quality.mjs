@@ -1,6 +1,7 @@
 process.env.SKIP_DASHBOARD_MAIN = "true";
 
 const { buildMarketWideValueResearch } = await import("./update-dashboard.mjs");
+const { buildCompanyResearchUniverse } = await import("./lib/unified-research-engine.mjs");
 
 const snapshot = [
   {
@@ -16,6 +17,7 @@ const snapshot = [
     pb: 2,
     psTtm: 3,
     marketCapYi: 100
+    ,tradeDate: "20260710", totalSharesYi: 5
   },
   {
     code: "601128",
@@ -30,6 +32,7 @@ const snapshot = [
     pb: 0.8,
     psTtm: 1.5,
     marketCapYi: 250
+    ,tradeDate: "20260710", totalSharesYi: 31.25
   },
   {
     code: "600001",
@@ -44,6 +47,7 @@ const snapshot = [
     pb: 0.5,
     psTtm: 0.5,
     marketCapYi: 80
+    ,tradeDate: "20260710", totalSharesYi: 26.6667
   }
 ];
 
@@ -89,7 +93,14 @@ const financials = new Map([
   }]
 ]);
 
-const result = buildMarketWideValueResearch(snapshot, {}, financials);
+const unified = buildCompanyResearchUniverse(snapshot, financials, new Map(), {
+  now: new Date("2026-07-11T12:00:00+08:00"),
+  marketDate: "20260710",
+  marketSource: "测试行情",
+  financialSource: "测试财务",
+  calculatedAt: "2026-07-11 12:00"
+});
+const result = buildMarketWideValueResearch(snapshot, {}, financials, unified.byCode);
 const byCode = new Map([...result.ideas, ...result.traps].map(item => [item.code, item]));
 const growthAsset = byCode.get("300416");
 const matureBank = byCode.get("601128");

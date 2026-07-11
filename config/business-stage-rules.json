@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0.0",
+  "updatedAt": "2026-07-11",
+  "weights": {
+    "revenueShare": 20,
+    "profitShare": 20,
+    "newOrderShare": 15,
+    "revenueGrowth": 10,
+    "profitGrowth": 10,
+    "commercializationEvidence": 10,
+    "customerQuality": 5,
+    "researchIntensity": 5,
+    "capitalCommitment": 5
+  },
+  "stages": [
+    { "min": 0, "max": 20, "label": "概念或研发阶段", "newBusinessValuationWeight": 0, "allowPrimaryLogicSwitch": false },
+    { "min": 21, "max": 40, "label": "客户验证或小规模商业化", "newBusinessValuationWeight": 0.1, "allowPrimaryLogicSwitch": false },
+    { "min": 41, "max": 60, "label": "第二增长曲线", "newBusinessValuationWeight": 0.3, "allowPrimaryLogicSwitch": false },
+    { "min": 61, "max": 80, "label": "快速放量", "newBusinessValuationWeight": 0.6, "allowPrimaryLogicSwitch": false },
+    { "min": 81, "max": 100, "label": "转型基本完成", "newBusinessValuationWeight": 0.85, "allowPrimaryLogicSwitch": true }
+  ],
+  "nonTriggers": [
+    "仅出现热门产业关键词",
+    "无金额或无订单的框架协议",
+    "少量参股",
+    "新业务收入占比极低",
+    "尚未产生收入的研发项目",
+    "公司只是使用相关工具",
+    "媒体概念归类",
+    "股价短期上涨"
+  ]
+}

@@ -1,0 +1,264 @@
+{
+  "schemaVersion": "1.0.0",
+  "parameterVersion": "2026.07-p0",
+  "updatedAt": "2026-07-11",
+  "currency": "CNY",
+  "units": {
+    "revenue": "亿元",
+    "profit": "亿元",
+    "bookValue": "亿元",
+    "embeddedValue": "亿元",
+    "marketCap": "亿元",
+    "shares": "亿股",
+    "price": "元"
+  },
+  "families": {
+    "insurance": {
+      "level1": "金融",
+      "level2": "保险",
+      "primaryMethods": ["P_EV", "PB"],
+      "auxiliaryMethods": ["NORMALIZED_PE"],
+      "forbiddenMethods": ["PS"],
+      "scenarios": {
+        "conservative": { "pEv": 0.55, "pb": 0.8, "pe": 8 },
+        "neutral": { "pEv": 0.75, "pb": 1.05, "pe": 11 },
+        "optimistic": { "pEv": 1.0, "pb": 1.3, "pe": 14 }
+      },
+      "reasonableBounds": { "pEv": [0.35, 1.25], "pb": [0.55, 1.6], "pe": [6, 16] },
+      "cycleAttribute": "利率与资本市场周期",
+      "growthAttribute": "新业务价值与保单质量",
+      "keyMetrics": ["内含价值", "净资产", "ROE", "新业务价值", "投资收益率", "偿付能力"],
+      "parameterSource": "保险行业专用估值框架，需用公司披露内含价值和可比公司复核",
+      "confidence": "medium",
+      "maxAgeDays": 120
+    },
+    "bank": {
+      "level1": "金融",
+      "level2": "银行",
+      "primaryMethods": ["PB"],
+      "auxiliaryMethods": ["NORMALIZED_PE"],
+      "forbiddenMethods": ["PS"],
+      "scenarios": {
+        "conservative": { "pb": 0.55, "pe": 5 },
+        "neutral": { "pb": 0.8, "pe": 7 },
+        "optimistic": { "pb": 1.05, "pe": 9 }
+      },
+      "reasonableBounds": { "pb": [0.35, 1.35], "pe": [4, 12] },
+      "cycleAttribute": "信用与利率周期",
+      "growthAttribute": "资产质量与ROE修复",
+      "keyMetrics": ["ROE", "净息差", "不良率", "拨备覆盖率", "核心一级资本充足率"],
+      "parameterSource": "银行PB-ROE框架",
+      "confidence": "high",
+      "maxAgeDays": 120
+    },
+    "securities": {
+      "level1": "金融",
+      "level2": "证券",
+      "primaryMethods": ["PB"],
+      "auxiliaryMethods": ["MID_CYCLE_PE"],
+      "forbiddenMethods": ["PS"],
+      "scenarios": {
+        "conservative": { "pb": 0.9, "pe": 12 },
+        "neutral": { "pb": 1.25, "pe": 18 },
+        "optimistic": { "pb": 1.65, "pe": 24 }
+      },
+      "reasonableBounds": { "pb": [0.65, 2.0], "pe": [8, 28] },
+      "cycleAttribute": "资本市场成交与风险偏好周期",
+      "growthAttribute": "财富管理和投行业务扩张",
+      "keyMetrics": ["ROE", "市场成交额", "两融规模", "投行业务", "净资本"],
+      "parameterSource": "券商PB与中周期PE框架",
+      "confidence": "medium",
+      "maxAgeDays": 90
+    },
+    "cyclical_resources": {
+      "level1": "周期资源",
+      "level2": "资源与化工",
+      "primaryMethods": ["MID_CYCLE_PE"],
+      "auxiliaryMethods": ["PB", "EV_EBITDA"],
+      "forbiddenMethods": ["PEAK_PROFIT_PE"],
+      "scenarios": {
+        "conservative": { "pe": 8, "pb": 0.9, "evEbitda": 5 },
+        "neutral": { "pe": 12, "pb": 1.3, "evEbitda": 7 },
+        "optimistic": { "pe": 16, "pb": 1.8, "evEbitda": 9 }
+      },
+      "reasonableBounds": { "pe": [5, 20], "pb": [0.6, 2.2], "evEbitda": [3, 11] },
+      "cycleAttribute": "强周期",
+      "growthAttribute": "供需与成本曲线",
+      "keyMetrics": ["产品价格", "价差", "产量", "库存", "资本开支", "中周期利润"],
+      "parameterSource": "中周期利润框架，禁止直接外推利润高点",
+      "confidence": "medium",
+      "maxAgeDays": 60
+    },
+    "semiconductor_advanced": {
+      "level1": "科技制造",
+      "level2": "半导体与高端制造",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["PS", "PEG"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 28, "ps": 3 },
+        "neutral": { "pe": 40, "ps": 5 },
+        "optimistic": { "pe": 52, "ps": 7 }
+      },
+      "reasonableBounds": { "pe": [20, 60], "ps": [2, 9] },
+      "cycleAttribute": "技术与资本开支周期",
+      "growthAttribute": "国产替代和渗透率提升",
+      "keyMetrics": ["订单", "收入增速", "国产替代率", "毛利率", "研发投入", "客户验证"],
+      "parameterSource": "半导体远期PE/PS框架",
+      "confidence": "medium",
+      "maxAgeDays": 90
+    },
+    "software_platform": {
+      "level1": "数字经济",
+      "level2": "软件、AI应用与平台",
+      "primaryMethods": ["FORWARD_PE", "PS"],
+      "auxiliaryMethods": ["PEG"],
+      "forbiddenMethods": ["PE_IF_LOSS"],
+      "scenarios": {
+        "conservative": { "pe": 25, "ps": 3 },
+        "neutral": { "pe": 38, "ps": 5 },
+        "optimistic": { "pe": 50, "ps": 7 }
+      },
+      "reasonableBounds": { "pe": [18, 60], "ps": [1.5, 9] },
+      "cycleAttribute": "技术和商业化周期",
+      "growthAttribute": "ARR、客户数与续费率",
+      "keyMetrics": ["收入增速", "毛利率", "ARR", "客户数", "续费率", "商业化程度"],
+      "parameterSource": "盈利软件用PE/PEG，未盈利平台用PS",
+      "confidence": "medium",
+      "maxAgeDays": 90
+    },
+    "innovation_pharma": {
+      "level1": "医药",
+      "level2": "创新药与生物科技",
+      "primaryMethods": ["PIPELINE_RNPV", "DCF"],
+      "auxiliaryMethods": ["MILESTONE_SOTP"],
+      "forbiddenMethods": ["PE_IF_PIPELINE_STAGE"],
+      "scenarios": {
+        "conservative": {},
+        "neutral": {},
+        "optimistic": {}
+      },
+      "reasonableBounds": {},
+      "cycleAttribute": "研发与审批周期",
+      "growthAttribute": "管线成功率和商业化峰值",
+      "keyMetrics": ["管线阶段", "成功概率", "目标患者", "峰值销售", "专利期", "现金储备"],
+      "parameterSource": "风险调整管线估值，缺少管线数据时禁止输出目标市值",
+      "confidence": "low",
+      "maxAgeDays": 60
+    },
+    "consumer": {
+      "level1": "消费",
+      "level2": "品牌与消费服务",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["PEG", "DCF"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 16 },
+        "neutral": { "pe": 24 },
+        "optimistic": { "pe": 32 }
+      },
+      "reasonableBounds": { "pe": [12, 38] },
+      "cycleAttribute": "消费与库存周期",
+      "growthAttribute": "品牌、渠道和份额提升",
+      "keyMetrics": ["品牌力", "收入增速", "净利率", "现金流", "渠道变化"],
+      "parameterSource": "消费PE/PEG框架",
+      "confidence": "medium",
+      "maxAgeDays": 120
+    },
+    "utilities": {
+      "level1": "公用事业",
+      "level2": "电力与公共服务",
+      "primaryMethods": ["DCF", "DIVIDEND_YIELD"],
+      "auxiliaryMethods": ["NORMALIZED_PE", "PB"],
+      "forbiddenMethods": ["HIGH_GROWTH_PS"],
+      "scenarios": {
+        "conservative": { "pe": 12, "pb": 1 },
+        "neutral": { "pe": 16, "pb": 1.4 },
+        "optimistic": { "pe": 20, "pb": 1.8 }
+      },
+      "reasonableBounds": { "pe": [9, 24], "pb": [0.7, 2.2] },
+      "cycleAttribute": "利率与资本开支周期",
+      "growthAttribute": "稳定现金流和分红",
+      "keyMetrics": ["自由现金流", "分红率", "资本开支", "负债率", "利用小时"],
+      "parameterSource": "DCF/股息率为主，数据不足时仅低置信度辅助估值",
+      "confidence": "medium",
+      "maxAgeDays": 120
+    },
+    "mature_manufacturing": {
+      "level1": "制造",
+      "level2": "成熟制造与汽车零部件",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["EV_EBITDA", "PB", "DCF"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 14, "pb": 1.3 },
+        "neutral": { "pe": 21, "pb": 2 },
+        "optimistic": { "pe": 29, "pb": 2.8 }
+      },
+      "reasonableBounds": { "pe": [9, 35], "pb": [0.8, 3.5] },
+      "cycleAttribute": "制造业订单周期",
+      "growthAttribute": "订单、份额和出海",
+      "keyMetrics": ["利润增长", "现金流", "资本开支", "行业地位", "市场份额"],
+      "parameterSource": "制造业远期PE与现金流框架",
+      "confidence": "medium",
+      "maxAgeDays": 120
+    },
+    "medical_devices": {
+      "level1": "医药",
+      "level2": "医疗器械与医疗服务",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["PEG", "DCF"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 20 },
+        "neutral": { "pe": 30 },
+        "optimistic": { "pe": 40 }
+      },
+      "reasonableBounds": { "pe": [15, 48] },
+      "cycleAttribute": "医疗需求与采购周期",
+      "growthAttribute": "产品渗透和国产替代",
+      "keyMetrics": ["收入增速", "研发投入", "注册证", "医院覆盖", "毛利率"],
+      "parameterSource": "医疗成长PE/PEG框架",
+      "confidence": "medium",
+      "maxAgeDays": 120
+    },
+    "real_estate": {
+      "level1": "地产",
+      "level2": "房地产与物业",
+      "primaryMethods": ["NAV", "PB"],
+      "auxiliaryMethods": ["NORMALIZED_PE"],
+      "forbiddenMethods": ["PS"],
+      "scenarios": {
+        "conservative": { "pb": 0.45, "pe": 6 },
+        "neutral": { "pb": 0.7, "pe": 8 },
+        "optimistic": { "pb": 1, "pe": 11 }
+      },
+      "reasonableBounds": { "pb": [0.25, 1.2], "pe": [4, 14] },
+      "cycleAttribute": "地产与信用周期",
+      "growthAttribute": "资产质量和现金回收",
+      "keyMetrics": ["NAV", "销售回款", "净负债率", "融资成本", "土储质量"],
+      "parameterSource": "NAV/PB框架",
+      "confidence": "low",
+      "maxAgeDays": 90
+    },
+    "generic_industrial": {
+      "level1": "其他",
+      "level2": "一般工业与服务",
+      "primaryMethods": ["FORWARD_PE"],
+      "auxiliaryMethods": ["PB"],
+      "forbiddenMethods": [],
+      "scenarios": {
+        "conservative": { "pe": 12, "pb": 1 },
+        "neutral": { "pe": 18, "pb": 1.5 },
+        "optimistic": { "pe": 24, "pb": 2.2 }
+      },
+      "reasonableBounds": { "pe": [8, 30], "pb": [0.7, 3] },
+      "cycleAttribute": "待识别",
+      "growthAttribute": "盈利与现金流",
+      "keyMetrics": ["收入", "利润", "ROE", "现金流", "负债率"],
+      "parameterSource": "兜底参数；行业无法可靠识别时估值必须失效",
+      "confidence": "low",
+      "maxAgeDays": 90
+    }
+  }
+}

@@ -3,7 +3,7 @@
   "trailingSlash": false,
   "headers": [
     {
-      "source": "/data/dashboard.json",
+      "source": "/data/(.*).json",
       "headers": [
         {
           "key": "Cache-Control",

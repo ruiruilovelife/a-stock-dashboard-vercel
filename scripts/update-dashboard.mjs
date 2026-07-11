@@ -1,4 +1,14 @@
 import fs from "node:fs/promises";
+import { buildCompanyResearchUniverse } from "./lib/unified-research-engine.mjs";
+import { buildIndustryMap } from "./lib/industry-map-engine.mjs";
+import {
+  buildChiefDecision,
+  buildFundingStructure,
+  buildGlobalTransmission,
+  buildPortfolioAdvice,
+  buildSystemDataHealth,
+  buildUnifiedEvents
+} from "./lib/decision-engine.mjs";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.5";
@@ -80,7 +90,9 @@ const IMPORTANT_ANNOUNCEMENT_RE = /业绩预告|业绩快报|预增|预盈|预�
 const INDICES = [
   ["sh000001", "上证指数"],
   ["sz399006", "创业板指"],
-  ["sh000688", "科创50"]
+  ["sh000688", "科创50"],
+  ["sh000300", "沪深300"],
+  ["sh000852", "中证1000"]
 ];
 
 const GLOBAL_SINA_SYMBOLS = [
@@ -1767,7 +1779,7 @@ async function fetchTushareAStockSnapshot() {
     const dailyBasic = await fetchTushare(
       "daily_basic",
       { trade_date: tradeDate },
-      "ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,ps,ps_ttm,total_mv,circ_mv"
+      "ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,ps,ps_ttm,total_share,total_mv,circ_mv"
     );
     if (!dailyBasic.length) continue;
     const dailyRows = await fetchTushare(
@@ -1803,6 +1815,8 @@ async function fetchTushareAStockSnapshot() {
         psTtm: toNumber(row.ps_ttm),
         marketCapYi: Number.isFinite(Number(row.total_mv)) ? Number((Number(row.total_mv) / 10000).toFixed(1)) : null,
         floatCapYi: Number.isFinite(Number(row.circ_mv)) ? Number((Number(row.circ_mv) / 10000).toFixed(1)) : null,
+        totalSharesYi: Number.isFinite(Number(row.total_share)) ? Number((Number(row.total_share) / 10000).toFixed(4)) : null,
+        shareSource: "Tushare daily_basic.total_share（万股转亿股）",
         buyable: isBuyableAShareCode(code)
       };
     }).filter(row => row.code && row.name && Number.isFinite(row.close));
@@ -1838,7 +1852,7 @@ async function fetchEastmoneyAStockSnapshot() {
   const rows = [];
   const pageSize = 100;
   const fs = "m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23";
-  const fields = "f2,f3,f6,f8,f9,f12,f14,f20,f21,f23,f100,f115";
+  const fields = "f2,f3,f6,f8,f9,f12,f14,f20,f21,f23,f84,f100,f115";
   for (let page = 1; page <= 80; page += 1) {
     const query = `pn=${page}&pz=${pageSize}&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f3&fs=${encodeURIComponent(fs)}&fields=${fields}`;
     const json = await fetchJsonWithRetry([
@@ -1862,6 +1876,8 @@ async function fetchEastmoneyAStockSnapshot() {
         pb: toNumber(row.f23),
         marketCapYi: Number.isFinite(Number(row.f20)) ? Number((Number(row.f20) / 100000000).toFixed(1)) : null,
         floatCapYi: Number.isFinite(Number(row.f21)) ? Number((Number(row.f21) / 100000000).toFixed(1)) : null,
+        totalSharesYi: Number.isFinite(Number(row.f84)) ? Number((Number(row.f84) / 100000000).toFixed(4)) : null,
+        shareSource: "东方财富f84（股转亿股）",
         buyable: isBuyableAShareCode(code)
       });
     }
@@ -2664,11 +2680,12 @@ function elasticityPrefilter(snapshot, financialByCode) {
     .slice(0, 72);
 }
 
-async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) {
+async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), companyResearchByCode = new Map()) {
   const prefiltered = elasticityPrefilter(snapshot, financialByCode);
   const weeklyPool = prefiltered.map(({ row }) => [symbolFromCode(row.code), row.name, row.code]);
   const weeklyProfiles = await fetchWeeklyProfiles(weeklyPool);
   const scored = prefiltered.map(({ row, financial, growth, industry }) => {
+    const unifiedResearch = companyResearchByCode.get(row.code);
     const weekly = weeklyProfiles.get(row.code);
     const phase = elasticityStartupPhase(weekly);
     const trendScore = elasticityTrendScore(weekly, phase);
@@ -2679,7 +2696,13 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
       pb: toNumber(row.pb),
       ps: toNumber(row.psTtm ?? row.ps)
     };
-    const futureSpace = futureMarketCapSpace(row, valuation, growth, financial, industry);
+    const futureSpace = unifiedResearch?.valuation?.rankingEligible
+      ? {
+          targetMcapYi: unifiedResearch.valuation.neutral?.marketCapYi ?? null,
+          upsideMultiple: unifiedResearch.valuation.upsideMultiple ?? null,
+          method: unifiedResearch.valuation.explanation
+        }
+      : { targetMcapYi: null, upsideMultiple: null, method: unifiedResearch?.valuation?.explanation || "统一估值未通过" };
     const spaceScore = elasticitySpaceScore(futureSpace.upsideMultiple, row.marketCapYi);
     const elasticityScore = Number(clampScore(trendScore + fundsScore + industryScore + spaceScore, 0, 100).toFixed(1));
     const type = elasticityCandidateType(industry, row);
@@ -2738,11 +2761,15 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
         : "等待20周线之上缩量回踩不破，随后成交额再次温和放大。",
       selectionReason: "全A预筛后补取周线历史；由趋势启动、连续资金、产业催化和未来市值空间共同评分。",
       modelVersion: "主升启动模型100分"
+      ,valuationValid: Boolean(unifiedResearch?.valuation?.valid)
+      ,valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible)
+      ,valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || []
     };
   });
   const typePriority = { "产业趋势型": 3, "周期反转型": 2, "资金驱动型": 1 };
   return scored
     .filter(item => item.elasticityScore >= 65)
+    .filter(item => item.valuationRankingEligible)
     .filter(item => item.phase === "爬坡期" || item.phase === "主升初期")
     .filter(item => !Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
     .sort((a, b) => (typePriority[b.type] - typePriority[a.type]) || b.elasticityScore - a.elasticityScore || b.mainRiseProbability - a.mainRiseProbability)
@@ -2770,6 +2797,16 @@ async function readPreviousDashboard() {
     return JSON.parse(raw);
   } catch {
     return {};
+  }
+}
+
+async function readPreviousCompanyResearch() {
+  try {
+    const raw = await fs.readFile("data/company-research.json", "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.companies) ? parsed : { companies: [] };
+  } catch {
+    return { companies: [] };
   }
 }
 
@@ -3058,19 +3095,20 @@ function currentMarketCapForGrowth(item, marketRow, dailyCandidate) {
   return null;
 }
 
-function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = []) {
+function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = [], companyResearchByCode = new Map()) {
   const marketByCode = new Map((marketWideSnapshot || []).map(row => [row.code, row]));
   const dailyByCode = new Map((dailyCandidates || []).map(item => [item.code, item]));
   const all = FUTURE_GROWTH_UNIVERSE.map(item => {
     const marketRow = marketByCode.get(item.code);
     const daily = dailyByCode.get(item.code);
+    const unifiedResearch = companyResearchByCode.get(item.code);
     const marketCapYi = currentMarketCapForGrowth(item, marketRow, daily);
-    const targetMcapYi = Number(item.targetMcapYi);
-    const upsideMultiple = marketCapYi && targetMcapYi ? Number((targetMcapYi / marketCapYi).toFixed(1)) : null;
+    const targetMcapYi = unifiedResearch?.valuation?.rankingEligible ? Number(unifiedResearch.valuation.neutral?.marketCapYi) : null;
+    const upsideMultiple = unifiedResearch?.valuation?.rankingEligible ? unifiedResearch.valuation.upsideMultiple : null;
     const industryScore = industryTrendScore(item.tier);
     const moatScore = companyMoatScore(item.moatLevel);
     const growthScore = financialGrowthScore(item.financial);
-    const valuationScore = valuationPotentialScore(marketCapYi, targetMcapYi);
+    const valuationScore = unifiedResearch?.valuation?.rankingEligible ? valuationPotentialScore(marketCapYi, targetMcapYi) : 0;
     const techScore = technicalFundsScore(item, marketRow, daily);
     const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
     const performanceImproving = Boolean(item.financial?.inflection) && Number(item.financial?.profit || 0) >= 3;
@@ -3079,16 +3117,18 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
     const isBuyable = isBuyableAShareCode(item.code);
     const phase = totalScore >= 90
       ? "未来赢家重点池"
-      : totalScore >= 85
-        ? "五倍潜力候选"
-        : totalScore >= 78
+      : totalScore >= 80
+        ? "高潜力候选"
+        : totalScore >= 70
+          ? "五倍潜力候选"
+          : totalScore >= 60
           ? "产业研究观察"
           : "未达入池";
     const why = [
       `产业：${item.tier}级${item.industry}，${item.chain}`,
       `竞争力：${item.moat}`,
       `财务：${item.financial?.inflection ? "利润/毛利率拐点待验证或已出现" : "仍需等待财务拐点"}`,
-      `估值空间：当前约${marketCapYi ?? item.currentMcapYi}亿，研究假设目标约${targetMcapYi}亿，空间约${upsideMultiple ?? "-"}倍`
+      `估值空间：统一估值引擎${unifiedResearch?.valuation?.rankingEligible ? `中性估值约${targetMcapYi}亿，空间约${upsideMultiple ?? "-"}倍` : "未通过，暂不参与空间排名"}`
     ].join("；");
     return {
       ...item,
@@ -3096,6 +3136,11 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       marketCapYi,
       targetMcapYi,
       upsideMultiple,
+      valuationValid: Boolean(unifiedResearch?.valuation?.valid),
+      valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible),
+      valuationMethod: unifiedResearch?.valuation?.method || null,
+      valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || [],
+      valuationScenarios: unifiedResearch?.valuation?.scenarios || null,
       pe: marketRow?.pe ?? daily?.pe ?? "待接入",
       peTtm: marketRow?.peTtm ?? daily?.peTtm ?? "待接入",
       pb: marketRow?.pb ?? daily?.pb ?? "待接入",
@@ -3118,13 +3163,22 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       performanceImproving,
       futureProfit5xPotential,
       lowAttention,
+      growthContributionBreakdown: {
+        revenueGrowth: Math.min(20, Number(item.financial?.revenue || 0) * 4),
+        profitGrowth: Math.min(25, Number(item.financial?.profit || 0) * 5),
+        newBusiness: Math.min(20, Number(unifiedResearch?.business?.transformationScore || 0) * 0.2),
+        marketShare: Math.min(15, Number(item.moatLevel || 0) * 3),
+        valuationRerating: Math.min(15, valuationScore),
+        mergerOrInjection: 0,
+        sentiment: Math.min(5, techScore * 0.5)
+      },
       coreLogic: why,
       futureCatalysts: item.catalysts.join("；"),
       risk: item.risks.join("；"),
       targetMcap: `${targetMcapYi}亿`,
-      fiveXRead: totalScore >= 85
+      fiveXRead: totalScore >= 70
         ? "产业趋势、竞争力、财务拐点和未来空间同时达标；技术资金只作为买点确认。"
-        : "产业逻辑可研究，但综合分未达85，暂不进入未来5倍正式候选。",
+        : "产业逻辑可研究，但综合分未达70，暂不进入未来5倍正式候选。",
       investmentLogicCard: {
         company: item.name,
         industryPosition: `${item.industry} / ${item.chain}`,
@@ -3138,9 +3192,10 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
 
   const futureFiveXCandidates = all
     .filter(item => item.buyable)
+    .filter(item => item.valuationRankingEligible)
     .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
     .filter(item => item.tier === "S" || item.tier === "A")
-    .filter(item => item.totalScore > 85)
+    .filter(item => item.totalScore >= 70)
     .filter(item => Number(item.upsideMultiple) >= 3)
     .filter(item => item.performanceImproving)
     .slice(0, 12);
@@ -3171,7 +3226,7 @@ function isFiveXPoolEligible(item) {
       && (item.tier === "S" || item.tier === "A")
       && Number(item.upsideMultiple) >= 3
       && item.performanceImproving
-      && Number(item.fiveXPotentialIndex) >= 85;
+      && Number(item.fiveXPotentialIndex) >= 70;
   }
   if (item.code === "002463") return false; // 沪电股份今年涨幅已过大，不再按早中期5倍候选处理。
   const yearReturn = Number(item.yearReturn);
@@ -3496,7 +3551,7 @@ function valueCatalyst(row, override, industry) {
   return VALUE_INDUSTRY_CATALYSTS.find(([re]) => re.test(text))?.[1] || "下一份财报、订单和行业景气验证";
 }
 
-function buildMarketWideValueResearch(snapshot, previous, financialByCode = new Map()) {
+function buildMarketWideValueResearch(snapshot, previous, financialByCode = new Map(), companyResearchByCode = new Map()) {
   const mediansByIndustry = industryValuationMedians(snapshot);
   const priorByCode = new Map((previous.oversoldValueIdeas || []).map(item => [item.code, item]));
   const all = (snapshot || [])
@@ -3504,6 +3559,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
     .filter(row => !/^ST|^\*ST/.test(row.name || ""))
     .filter(row => Number(row.close) > 2)
     .map(row => {
+      const unifiedResearch = companyResearchByCode.get(row.code);
       const override = valueResearchOverride(row.code);
       const financial = financialByCode.get(row.code) || fallbackFinancialForValue(row);
       const industry = valueIndustryProfile(row, override);
@@ -3512,9 +3568,17 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
       const moat = moatQualityScore(financial, override);
       const technicalScore = valueTechnicalEntryScore(row);
       const trap = valueTrapDetection(valuation, growth, financial, industry);
-      const futureSpace = futureMarketCapSpace(row, valuation, growth, financial, industry);
+      const futureSpace = unifiedResearch?.valuation?.rankingEligible
+        ? {
+            targetMcapYi: unifiedResearch.valuation.neutral?.marketCapYi ?? null,
+            upsideMultiple: unifiedResearch.valuation.upsideMultiple ?? null,
+            method: unifiedResearch.valuation.explanation
+          }
+        : { targetMcapYi: null, upsideMultiple: null, method: unifiedResearch?.valuation?.explanation || "统一估值未通过" };
       const compositeScore = Number(clampScore(valuation.score + growth.score + industry.score + moat.score + technicalScore, 0, 100).toFixed(1));
-      const investmentStatus = trap.risk === "高"
+      const investmentStatus = !unifiedResearch?.valuation?.valid
+        ? "估值失效"
+        : trap.risk === "高"
         ? "低估陷阱风险"
         : valuation.score >= 19 && compositeScore >= 72
           ? "深度低估"
@@ -3550,6 +3614,13 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         valueTrapIndex: trap.index,
         valueTrapRisk: trap.risk,
         valueTrapReasons: trap.reasons,
+        valuationValid: Boolean(unifiedResearch?.valuation?.valid),
+        valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible),
+        valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || [],
+        valuationWarnings: unifiedResearch?.valuation?.warnings || [],
+        valuationMethod: unifiedResearch?.valuation?.method || null,
+        valuationScenarios: unifiedResearch?.valuation?.scenarios || null,
+        valuationEngineVersion: unifiedResearch?.valuation?.engineVersion || null,
         investmentStatus,
         phase,
         currentMcapYi: row.marketCapYi,
@@ -3584,6 +3655,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
     });
 
   const ideas = all
+    .filter(item => item.valuationValid && item.valuationRankingEligible)
     .filter(item => item.compositeScore >= 55 || (item.growthScore >= 18 && item.industryScore >= 20))
     .filter(item => item.valueTrapRisk !== "高")
     .sort((a, b) => b.compositeScore - a.compositeScore || Number(b.upsideMultiple ?? -999) - Number(a.upsideMultiple ?? -999))
@@ -4661,7 +4733,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       futureCandidateRules: [
         "当前市值小于1000亿，正式五倍潜力池优先50-500亿。",
         "所属产业必须A级以上，S级优先：AI算力基础设施、半导体国产替代/材料/设备、人形机器人、工业自动化、低空经济、高端制造。",
-        "综合评分必须大于85分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
+        "综合评分必须达到70分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
         "必须能说清楚当前市场错误认知，不允许只写题材和K线。",
         "每只股票必须给出目标市值假设、未来催化、最大风险和失败信号。"
       ],
@@ -5150,7 +5222,7 @@ async function buildModelAnalysis(dashboard, session) {
 4. 早盘版指导上午，午间版指导下午，盘后版指导明天，周末版指导下周。
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
 6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
-7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于85的股票不要建议买入，只能普通观察。
+7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于70的股票不要进入正式候选，只能普通观察。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
@@ -5230,6 +5302,7 @@ async function buildModelAnalysis(dashboard, session) {
 
 async function main() {
   const previous = await readPreviousDashboard();
+  const previousCompanyResearch = await readPreviousCompanyResearch();
   const session = updateSession();
   const scheduleGate = shouldRunScheduledUpdate(previous, session);
   if (!scheduleGate.ok) {
@@ -5328,7 +5401,9 @@ async function main() {
           ps: supplement.ps ?? row.ps,
           psTtm: supplement.psTtm ?? row.psTtm,
           peTtm: row.peTtm ?? supplement.peTtm,
-          pb: row.pb ?? supplement.pb
+          pb: row.pb ?? supplement.pb,
+          totalSharesYi: row.totalSharesYi ?? supplement.totalSharesYi,
+          shareSource: row.shareSource || supplement.shareSource
         };
       });
       marketWideSource = `${marketWideSource}+Tushare估值补充`;
@@ -5369,6 +5444,51 @@ async function main() {
           : financial?.industry || row.industry
       };
     });
+  }
+  const businessEvidenceByCode = new Map(FUTURE_GROWTH_UNIVERSE.map(item => [item.code, {
+    moatLevel: item.moatLevel,
+    marketPricingLogic: item.industry,
+    coreRevenueSource: item.chain,
+    coreProfitSource: item.chain,
+    commercializationCode: "none",
+    customerQuality: item.moatLevel >= 4 ? "high" : item.moatLevel >= 3 ? "medium" : "low"
+  }]));
+  const calculatedAt = chinaTimeString();
+  let companyResearchResult = buildCompanyResearchUniverse(
+    marketWideSnapshot,
+    valueFinancialResult.byCode,
+    businessEvidenceByCode,
+    {
+      marketDate: marketWideSnapshot.find(row => row.tradeDate)?.tradeDate || dateOnlyChina(),
+      marketSource: marketWideSource,
+      financialSource: valueFinancialResult.source,
+      calculatedAt
+    }
+  );
+  if (!companyResearchResult.list.length && previousCompanyResearch.companies.length) {
+    const cached = previousCompanyResearch.companies.map(item => ({
+      ...item,
+      conclusion: {
+        ...(item.conclusion || {}),
+        invalid: true,
+        invalidReasons: [...new Set([...(item.conclusion?.invalidReasons || []), "本次全A行情源失败，使用上一次公司研究缓存"])]
+      },
+      cacheStatus: {
+        usingCache: true,
+        cachedGeneratedAt: previousCompanyResearch.generatedAt || null,
+        reason: "本次全A行情源失败"
+      }
+    }));
+    companyResearchResult = {
+      list: cached,
+      byCode: new Map(cached.map(item => [item.code, item])),
+      summary: {
+        ...(previousCompanyResearch.summary || {}),
+        total: cached.length,
+        usingCache: true,
+        cachedGeneratedAt: previousCompanyResearch.generatedAt || null
+      }
+    };
   }
   const oversoldQuotes = await fetchSina(OVERSOLD_VALUE_POOL.map(x => x[0])).catch(error => {
     console.warn(`oversold quote fallback: ${error.message}`);
@@ -5431,7 +5551,7 @@ async function main() {
     && Array.isArray(previous.oversoldValueIdeas)
     && previous.oversoldValueIdeas.length;
   const dailyCandidates = marketWideSnapshot.length
-    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode)
+    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode, companyResearchResult.byCode)
     : hasPreviousFullMarketCandidates
       ? previous.candidates
       : buildCandidates(candidateQuotes, previous, candidateWeeklyProfiles, candidateMarketCaps);
@@ -5451,7 +5571,7 @@ async function main() {
       })
     : candidateQuotes;
   const valueResearch = marketWideSnapshot.length
-    ? buildMarketWideValueResearch(marketWideSnapshot, previous, valueFinancialResult.byCode)
+    ? buildMarketWideValueResearch(marketWideSnapshot, previous, valueFinancialResult.byCode, companyResearchResult.byCode)
     : {
         ideas: hasPreviousFullMarketValue
           ? previous.oversoldValueIdeas
@@ -5463,7 +5583,7 @@ async function main() {
   const valueTrackingQuotes = marketWideSnapshot.length
     ? quoteRowsFromItems(marketWideSnapshot)
     : quoteRowsFromItems(oversoldValueIdeas);
-  const institutionalGrowth = buildInstitutionalGrowthResearch(marketWideSnapshot, dailyCandidates);
+  const institutionalGrowth = buildInstitutionalGrowthResearch(marketWideSnapshot, dailyCandidates, companyResearchResult.byCode);
   const futureFiveXCandidates = institutionalGrowth.futureFiveXCandidates;
   const davisDoubleCandidates = institutionalGrowth.davisDoubleCandidates;
   const industryChainMap = institutionalGrowth.industryChainMap;
@@ -5478,7 +5598,7 @@ async function main() {
     dropBelowMin: true
   });
   const trackedFiveXIdeas = buildRollingResearchPool(previous, "trackedFiveXIdeas", fiveXIdeas, candidateTrackingQuotes, {
-    minScore: 85,
+    minScore: 70,
     scoreField: "fiveXPotentialIndex",
     statusPrefix: "5倍模型",
     dropBelowMin: true,
@@ -5533,6 +5653,12 @@ async function main() {
       : "强弹性候选：全A快照失败，本次仅有手工池占位，不作为正式全市场选股";
   const marketInternals = buildMarketInternals(marketWideSnapshot);
   const macro = buildMacroMap(indices, globalMarkets, marketInternals);
+  const unifiedEvents = buildUnifiedEvents(holdingHardEvents, publicNewsCandidates);
+  const portfolioAdvice = buildPortfolioAdvice(holdings, companyResearchResult.byCode, holdingHardEvents);
+  const fundingStructure = buildFundingStructure(marketInternals, indices);
+  fundingStructure.generatedAt = calculatedAt;
+  const globalTransmission = buildGlobalTransmission(globalMarkets, macro.signals || []);
+  const independentIndustryMap = buildIndustryMap(companyResearchResult.list, unifiedEvents, fundingStructure, calculatedAt);
   const dashboard = {
     meta: {
       version: "云端自动更新版",
@@ -5543,6 +5669,9 @@ async function main() {
       scanScope: scanScopeText,
       candidateScanScope: candidateScanScopeText,
       valueQualityDataCoverage: `${valueFinancialResult.source}；报告期${valueFinancialResult.periods.join("/") || "待取数"}；覆盖${valueFinancialResult.covered}只`,
+      researchEngineVersion: companyResearchResult.summary.engineVersion,
+      researchEngineCoverage: `公司研究快照${companyResearchResult.summary.total}只；估值有效${companyResearchResult.summary.valuationValid}只；可参与排名${companyResearchResult.summary.rankingEligible}只`,
+      marketSource: marketWideSource,
       dataSource: "GitHub Actions + 新浪行情接口 + 规则化投研",
       note: "自动化基础版会更新行情和规则化判断；深度新闻研判可后续接入分析模型。"
     },
@@ -5567,6 +5696,29 @@ async function main() {
       privacyNote: "按用户要求，网页不展示账户金额，只展示仓位比例、收益百分比和交易状态。",
       holdings
     },
+    companyResearchSummary: companyResearchResult.summary,
+    unifiedEvents,
+    portfolioAdvice,
+    fundingStructure,
+    globalTransmission,
+    independentIndustryMap,
+    valuationAuditHighlights: companyResearchResult.list
+      .filter(item => item.code === "601336" || !item.valuation.valid)
+      .slice(0, 20)
+      .map(item => ({
+        name: item.name,
+        code: item.code,
+        industry: item.industry,
+        method: item.valuation.method,
+        valid: item.valuation.valid,
+        rankingEligible: item.valuation.rankingEligible,
+        conservative: item.valuation.conservative,
+        neutral: item.valuation.neutral,
+        optimistic: item.valuation.optimistic,
+        invalidReasons: item.valuation.invalidReasons,
+        warnings: item.valuation.warnings,
+        audit: item.valuation.audit
+      })),
     candidates: dailyCandidates,
     elasticityModel: {
       name: "AI主升启动雷达",
@@ -5605,7 +5757,46 @@ async function main() {
     dashboard.macro.modelSummary = dashboard.macro.modelAnalysis.summary;
   }
 
+  dashboard.dataHealth = buildSystemDataHealth({
+    meta: dashboard.meta,
+    marketRows: marketWideSnapshot,
+    financialSummary: valueFinancialResult,
+    announcementCoverage,
+    publicNewsCandidates,
+    globalMarkets,
+    modelAnalysis: dashboard.macro.modelAnalysis
+  });
+  dashboard.chiefDecision = buildChiefDecision({
+    marketRegime: macro.marketRegime,
+    indices,
+    internals: marketInternals,
+    portfolioAdvice,
+    events: unifiedEvents,
+    dataHealth: dashboard.dataHealth,
+    guidanceTarget: session.target
+  });
+  const previousHistory = Array.isArray(previous.conclusionHistory) ? previous.conclusionHistory : [];
+  const previousDecision = previous.chiefDecision?.marketStage?.regime || null;
+  const currentDecision = dashboard.chiefDecision.marketStage.regime;
+  dashboard.conclusionHistory = [
+    ...previousHistory,
+    ...(previousDecision !== currentDecision || !previousHistory.length ? [{
+      changedAt: calculatedAt,
+      from: previousDecision,
+      to: currentDecision,
+      basis: dashboard.chiefDecision.marketStage.basis,
+      dataHealth: dashboard.dataHealth.degraded ? "降级" : "完整"
+    }] : [])
+  ].slice(-30);
+
   await fs.mkdir("data", { recursive: true });
+  await fs.writeFile("data/company-research.json", `${JSON.stringify({
+    schemaVersion: "company-research-universe/1.0.0",
+    generatedAt: calculatedAt,
+    summary: companyResearchResult.summary,
+    companies: companyResearchResult.list
+  }, null, 2)}\n`, "utf8");
+  await fs.writeFile("data/industry-map.json", `${JSON.stringify(independentIndustryMap, null, 2)}\n`, "utf8");
   await fs.writeFile("data/dashboard.json", `${JSON.stringify(dashboard, null, 2)}\n`, "utf8");
 }
 

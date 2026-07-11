@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "company-research-universe/1.0.0",
+  "generatedAt": "2026-07-11 21:49",
+  "summary": {
+    "total": 0,
+    "industryRecognized": 0,
+    "valuationValid": 0,
+    "rankingEligible": 0,
+    "invalid": 0,
+    "engineVersion": "2026.07-p0"
+  },
+  "companies": []
+}

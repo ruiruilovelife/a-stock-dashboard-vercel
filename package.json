@@ -6,6 +6,8 @@
   "scripts": {
     "update": "node scripts/update-dashboard.mjs",
     "test:elasticity": "node scripts/test-elasticity-model.mjs",
-    "test:value": "node scripts/test-value-quality.mjs"
+    "test:unified": "node scripts/test-unified-research-engine.mjs",
+    "test:value": "node scripts/test-value-quality.mjs",
+    "test:decision": "node scripts/test-decision-layer.mjs"
   }
 }
