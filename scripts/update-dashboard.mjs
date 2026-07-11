@@ -2698,7 +2698,7 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), 
     };
     const futureSpace = unifiedResearch?.valuation?.rankingEligible
       ? {
-          targetMcapYi: unifiedResearch.valuation.neutral?.marketCapYi ?? null,
+          targetMcapYi: unifiedResearch.valuation.futureScenarios?.neutral?.marketCapYi ?? null,
           upsideMultiple: unifiedResearch.valuation.upsideMultiple ?? null,
           method: unifiedResearch.valuation.explanation
         }
@@ -2764,6 +2764,8 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), 
       ,valuationValid: Boolean(unifiedResearch?.valuation?.valid)
       ,valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible)
       ,valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || []
+      ,valuationFutureScenarios: unifiedResearch?.valuation?.futureScenarios || null
+      ,forwardGrowthAssumptions: unifiedResearch?.valuation?.forwardAssumptions || null
     };
   });
   const typePriority = { "产业趋势型": 3, "周期反转型": 2, "资金驱动型": 1 };
@@ -3552,7 +3554,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
       const trap = valueTrapDetection(valuation, growth, financial, industry);
       const futureSpace = unifiedResearch?.valuation?.rankingEligible
         ? {
-            targetMcapYi: unifiedResearch.valuation.neutral?.marketCapYi ?? null,
+            targetMcapYi: unifiedResearch.valuation.futureScenarios?.neutral?.marketCapYi ?? null,
             upsideMultiple: unifiedResearch.valuation.upsideMultiple ?? null,
             method: unifiedResearch.valuation.explanation
           }
@@ -3602,6 +3604,8 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         valuationWarnings: unifiedResearch?.valuation?.warnings || [],
         valuationMethod: unifiedResearch?.valuation?.method || null,
         valuationScenarios: unifiedResearch?.valuation?.scenarios || null,
+        valuationFutureScenarios: unifiedResearch?.valuation?.futureScenarios || null,
+        forwardGrowthAssumptions: unifiedResearch?.valuation?.forwardAssumptions || null,
         valuationEngineVersion: unifiedResearch?.valuation?.engineVersion || null,
         investmentStatus,
         phase,
@@ -5697,6 +5701,8 @@ async function main() {
         conservative: item.valuation.conservative,
         neutral: item.valuation.neutral,
         optimistic: item.valuation.optimistic,
+        futureScenarios: item.valuation.futureScenarios,
+        forwardAssumptions: item.valuation.forwardAssumptions,
         invalidReasons: item.valuation.invalidReasons,
         warnings: item.valuation.warnings,
         audit: item.valuation.audit
@@ -5755,7 +5761,11 @@ async function main() {
     portfolioAdvice,
     events: unifiedEvents,
     dataHealth: dashboard.dataHealth,
-    guidanceTarget: session.target
+    guidanceTarget: session.target,
+    candidates: dailyCandidates,
+    valueIdeas: oversoldValueIdeas,
+    fiveXIdeas,
+    modelAnalysis: dashboard.macro.modelAnalysis
   });
   const previousHistory = Array.isArray(previous.conclusionHistory) ? previous.conclusionHistory : [];
   const previousDecision = previous.chiefDecision?.marketStage?.regime || null;

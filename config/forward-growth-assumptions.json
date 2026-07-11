@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "forward-growth/1.0.0",
+  "version": "2026.07-f1",
+  "updatedAt": "2026-07-11",
+  "horizons": { "twelveMonthYears": 1, "strategicYears": 3 },
+  "scenarioRealization": { "conservative": 0.75, "neutral": 0.9, "optimistic": 1.0 },
+  "families": {
+    "insurance": { "min": 2, "base": 7, "max": 14, "driver": "内含价值、新业务价值、ROE与利率" },
+    "bank": { "min": 1, "base": 5, "max": 10, "driver": "资产增速、ROE、净息差与资产质量" },
+    "securities": { "min": -5, "base": 8, "max": 22, "driver": "成交、两融、投行与财富管理" },
+    "cyclical_resources": { "min": -5, "base": 4, "max": 12, "driver": "中周期供需、成本曲线与产能" },
+    "semiconductor_advanced": { "min": 8, "base": 20, "max": 38, "driver": "国产替代、订单、市场份额与客户验证" },
+    "software_platform": { "min": 8, "base": 22, "max": 42, "driver": "ARR、客户、续费率与商业化" },
+    "innovation_pharma": { "min": 0, "base": 18, "max": 45, "driver": "管线成功率、商业化峰值与授权" },
+    "consumer": { "min": 2, "base": 9, "max": 18, "driver": "品牌、渠道、份额和现金流" },
+    "utilities": { "min": 1, "base": 5, "max": 9, "driver": "现金流、装机、利用小时与分红" },
+    "mature_manufacturing": { "min": 4, "base": 13, "max": 25, "driver": "订单、份额、出海和利润率" },
+    "medical_devices": { "min": 4, "base": 14, "max": 28, "driver": "产品渗透、国产替代与海外收入" },
+    "real_estate": { "min": -8, "base": 0, "max": 6, "driver": "销售、回款、资产质量和信用周期" },
+    "generic_industrial": { "min": 0, "base": 8, "max": 15, "driver": "行业识别不足，不参与排名" }
+  }
+}

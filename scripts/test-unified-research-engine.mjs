@@ -86,6 +86,23 @@ assert.equal(cycle.valuation.method, "MID_CYCLE_PE");
 const lossSoftware = results[7];
 assert.equal(lossSoftware.valuation.method, "PS");
 
+const semiconductor = results[5];
+assert.ok(semiconductor.valuation.futureScenarios.neutral.marketCapYi > semiconductor.valuation.scenarios.neutral.marketCapYi, "成长型公司三年估值未体现未来增长");
+assert.ok(semiconductor.valuation.forwardAssumptions.evidenceCount >= 2);
+
+const noGrowth = buildCompanyResearchSnapshot(company("300999", "缺成长数据样本", "半导体材料"), { reportPeriod: "20251231" }, {}, context);
+assert.equal(noGrowth.valuation.valid, false);
+assert.ok(noGrowth.valuation.invalidReasons.some(item => item.includes("成长数据")));
+
+const migrated = buildCompanyResearchSnapshot(
+  company("600999", "传统业务完成AI转型样本", "化学制品", { psTtm: 3 }),
+  financial(),
+  { newBusinessName: "AI软件平台", newBusinessIndustry: "软件服务", newBusinessRevenueSharePct: 85, newBusinessProfitSharePct: 90, newBusinessOrderSharePct: 90, newBusinessRevenueGrowthPct: 60, newBusinessProfitGrowthPct: 80, commercializationCode: "mature", customerQuality: "high", researchIntensityPct: 15, newBusinessCapexSharePct: 70, adjustmentReason: "新业务成为主要收入和利润来源" },
+  context
+);
+assert.equal(migrated.business.migrationApplied, true);
+assert.equal(migrated.industry.familyId, "software_platform");
+
 const multiBusiness = results[10];
 assert.equal(multiBusiness.valuation.neutral.method, "SOTP");
 

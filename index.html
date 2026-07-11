@@ -308,6 +308,7 @@
       const events = state.unifiedEvents || [];
       const health = state.dataHealth || {};
       const transmission = state.globalTransmission || [];
+      const globalDaily = state.macro?.globalMarkets || [];
       const industryMap = state.independentIndustryMap || {};
       const meta = state.meta || {};
       const timeLine = `<p class="muted">模型计算：${meta.lastUpdated || "-"} ｜ 行情：${health.sources?.find(x => x.name === "行情与市值")?.latestDataAt || "待确认"} ｜ 财务：${health.sources?.find(x => x.name === "财务数据")?.latestDataAt || "待确认"} ｜ 公告/新闻：${health.sources?.find(x => x.name === "公司公告")?.latestDataAt || "待确认"}</p>`;
@@ -322,6 +323,9 @@
           </div>
           <div class="section card notice dense"><h2>今日核心结论</h2>
             <table><thead><tr><th>判断</th><th>依据</th><th>A股影响</th><th>行业/持仓</th><th>有效期与失效条件</th><th>置信度</th></tr></thead><tbody>${(chief.coreConclusions || []).map(x => `<tr><td><b>${x.result}</b></td><td>${x.basis}</td><td>${x.aShareImpact}</td><td>${x.industries}<br>${x.portfolioMeaning}</td><td>${x.validFor}<br><span class="muted">失效：${x.invalidationCondition}</span></td><td>${x.confidence}</td></tr>`).join("") || `<tr><td colspan="6">关键数据不足，暂不生成强结论。</td></tr>`}</tbody></table>
+          </div>
+          <div class="section card good dense"><h2>首席推荐与行动顺序</h2>
+            <table><thead><tr><th>类型</th><th>明确建议</th><th>为什么</th><th>触发条件</th><th>怎么做</th><th>风险/有效期</th></tr></thead><tbody>${(chief.recommendations || []).map(x => `<tr><td><b>${x.type}</b><br>置信度${x.confidence}</td><td><b>${x.recommendation}</b></td><td>${x.why}</td><td>${x.trigger}</td><td>${x.action}</td><td>${x.risk}<br><span class="muted">${x.validFor}</span></td></tr>`).join("") || `<tr><td colspan="6">数据不足，暂不给出推荐。</td></tr>`}</tbody></table>
           </div>
           <div class="section card dense"><h2>资金迁移与行业状态</h2>
             <table><thead><tr><th>行业</th><th>资金强度</th><th>价格</th><th>盈利预期</th><th>估值/拥挤</th><th>迁移类型</th></tr></thead><tbody>${(funding.migrationMatrix || []).slice(0, 10).map(x => `<tr><td><b>${x.industry}</b></td><td>${x.capitalStrength ?? "待确认"}</td><td>${x.priceTrend}</td><td>${x.earningsExpectation}</td><td>${x.valuationPosition}<br>${x.crowding}</td><td>${x.migrationType}</td></tr>`).join("") || `<tr><td colspan="6">行业资金数据不足，不用指数涨跌代替资金流向。</td></tr>`}</tbody></table>
@@ -345,17 +349,18 @@
           <div class="section card risk dense"><h2>尚未接入的硬指标</h2><p>${(funding.unavailableMetrics || []).join("、")}</p><p>${funding.unavailableReason || "不使用推测值。"}</p></div>`;
       }
 
-      if (id === "radar") {
+      if (id === "__radarUnifiedRemoved") {
         return `${timeLine}<div class="section card notice dense"><h2>统一事件中心</h2><p>同一事件已按公司、日期和标题聚合去重；传闻和公开搜索线索不会直接当作事实。</p></div><div class="section card dense"><table><thead><tr><th>事件/类别</th><th>来源/时间</th><th>可信度</th><th>方向与影响</th><th>传导路径</th><th>模型动作</th><th>有效期/失效</th></tr></thead><tbody>${events.map(x => `<tr><td><b>${x.title}</b><br>${x.category} · ${x.importance}</td><td>${x.source}<br>${x.firstSeenAt || "待确认"}</td><td>${x.credibility}</td><td>${x.direction}<br>${x.shortTermImpact}<br>${x.mediumTermImpact}</td><td>${x.affectedIndustries}<br>${x.affectedCompanies}<br>${x.transmissionPath}</td><td>盈利预测：${x.adjustEarnings ? "需复核" : "暂不调整"}<br>估值逻辑：${x.adjustValuationLogic ? "需复核" : "不迁移"}<br>评分：${x.adjustModelScore ? "重算" : "不变"}</td><td>${x.validFor}<br><span class="muted">${x.invalidationCondition}</span></td></tr>`).join("") || `<tr><td colspan="7">事件源未成功更新，旧新闻不会冒充最新事件。</td></tr>`}</tbody></table></div>`;
       }
 
-      if (id === "earnings") {
+      if (id === "__earningsUnifiedRemoved") {
         const financialEvents = events.filter(x => ["公司基本面", "订单", "风险事件"].includes(x.category));
         return `${timeLine}<div class="section card notice dense"><h2>盈利预期与公司事件</h2><p>优先级：持仓与跟踪公司公告 ＞ 业绩预告/快报 ＞ 重大合同与订单 ＞ 媒体解读。缺少现金流、毛利率、应收和存货数据时明确标记待核验。</p></div><div class="section card dense"><table><thead><tr><th>公司/事件</th><th>性质</th><th>硬事实与最新进展</th><th>利润来源判断</th><th>质量验证</th><th>估值与动作</th></tr></thead><tbody>${financialEvents.map(x => `<tr><td><b>${x.company || "全市场"}</b><br>${x.title}</td><td>${x.category}<br>${x.direction}</td><td>${x.latestProgress || "待核验"}</td><td>${/业绩|订单|价格/.test(x.title) ? "需要拆分主营、销量、价格、毛利率、费用和非经常损益" : "不直接调整盈利预测"}</td><td>毛利率/现金流/应收/存货/合同负债：待财报结构化数据</td><td>${x.adjustEarnings ? "触发盈利预测复核" : "暂不调整"}<br>${x.adjustValuationLogic ? "触发估值逻辑复核" : "估值逻辑不迁移"}</td></tr>`).join("") || `<tr><td colspan="6">公告源本次未确认有效数据，不能写“无公告”。</td></tr>`}</tbody></table></div>`;
       }
 
       if (id === "global") {
-        return `${timeLine}<div class="section card notice dense"><h2>海外市场到A股传导</h2><p>不以单日指数涨跌直接推荐股票；先确认海外公司/政策影响产品价格、订单或资本开支，再映射A股真实业务敞口。</p></div><div class="section card dense"><table><thead><tr><th>市场/事件</th><th>全球产业链</th><th>传导路径</th><th>A股行业与公司</th><th>影响强度/周期</th><th>定价/动作</th><th>来源</th></tr></thead><tbody>${transmission.map(x => `<tr><td><b>${x.market}</b><br>${x.event}</td><td>${x.affectedGlobalChain}</td><td>${x.productOrderCapexPath}</td><td>${x.affectedAIndustry}<br>直接受益：${x.directBeneficiaries}<br>潜在受损：${x.potentialLosers}</td><td>${x.impactStrength}<br>${x.impactCycle}</td><td>${x.pricedIn}<br>${x.action}</td><td>${x.source}<br>${x.updatedAt || "待确认"}<br>置信度${x.confidence}</td></tr>`).join("")}</tbody></table></div>`;
+        return `${timeLine}<div class="section card notice dense"><h2>今日海外市场快照</h2><p>以下行情每次日更重新获取；旧收盘只可作参考，不能生成当天方向。</p><table><thead><tr><th>市场</th><th>收盘</th><th>当日涨跌</th><th>数据时间</th><th>当日状态</th></tr></thead><tbody>${globalDaily.map(x => `<tr><td><b>${x.name}</b></td><td>${x.close ?? "-"}</td><td class="${pctClass(x.pct)}">${fmtPct(x.pct)}</td><td>${x.time || "未确认"}</td><td>${Number.isFinite(Number(x.pct)) ? (Number(x.pct) >= 1 ? "风险偏好增强" : Number(x.pct) <= -1 ? "风险偏好承压" : "震荡") : "当日数据未确认"}</td></tr>`).join("") || `<tr><td colspan="5">海外行情源本次失败，不生成当日映射结论。</td></tr>`}</tbody></table></div>
+          <div class="section card dense"><h2>今日海外市场到A股传导</h2><p>不以单日指数涨跌直接推荐股票；先确认海外公司/政策影响产品价格、订单或资本开支，再映射A股真实业务敞口。</p><table><thead><tr><th>市场/今日事件</th><th>全球产业链</th><th>传导路径</th><th>A股行业与公司</th><th>影响强度/周期</th><th>定价/动作</th><th>来源</th></tr></thead><tbody>${transmission.map(x => `<tr><td><b>${x.market}</b><br>${x.event}</td><td>${x.affectedGlobalChain}</td><td>${x.productOrderCapexPath}</td><td>${x.affectedAIndustry}<br>直接受益：${x.directBeneficiaries}<br>潜在受损：${x.potentialLosers}</td><td>${x.impactStrength}<br>${x.impactCycle}</td><td>${x.dailyVerified ? x.pricedIn : "当日数据未确认，不形成方向"}<br>${x.dailyVerified ? x.action : "等待下一次更新"}</td><td>${x.source}<br>${x.updatedAt || "待确认"}<br>置信度${x.confidence}</td></tr>`).join("")}</tbody></table></div>`;
       }
 
       if (id === "industry") {
@@ -978,7 +983,7 @@
                   <td><b>${growthScore}/30</b><br>${stars(scoreToFive(growthScore, 30))}<br>营收CAGR:${fmtPct(x.growth?.revenueCagr3Y)}<br>利润CAGR:${fmtPct(x.growth?.profitCagr3Y)}<br>ROE趋势:${fmtPct(x.growth?.roeTrend)}</td>
                   <td><b>${industryScore}/25</b><br>${stars(scoreToFive(industryScore, 25))}<br>${x.theme || x.industryLabel || "待分类"}<br><span class="muted">${x.industryChain || "细分位置待核验"}</span></td>
                   <td><b>${moatScore}/15</b><br>${stars(scoreToFive(moatScore, 15))}<br>${x.moat?.read || "行业排名待核验"}</td>
-                  <td>当前：${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿<br>合理情景：${x.targetMcapYi ?? "待验证"}亿<br><b>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "待验证"}</b> ${stars(x.potentialStars || 0)}<br><span class="muted">${x.targetMethod || "-"}</span></td>
+                  <td>当前：${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿<br>三年中性：${x.targetMcapYi ?? "待验证"}亿<br><b>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "待验证"}</b> ${stars(x.potentialStars || 0)}<br>利润CAGR假设：${x.forwardGrowthAssumptions?.rates?.neutral?.profitCagrPct ?? "待验证"}%<br><span class="muted">${x.targetMethod || "-"}</span></td>
                   <td>${x.cyclePosition || "待验证"}<br><span class="${pctClass(x.dayPct)}">今日 ${fmtPct(x.dayPct)}</span><br><span class="muted">成交 ${x.amount || "-"}</span></td>
                   <td>${x.catalyst || "下一份财报与订单验证"}<br><span class="muted">${x.keyCheck || "-"}</span></td>
                   <td><b>陷阱指数 ${x.valueTrapIndex ?? "-"}/100</b><br>${(x.valueTrapReasons || []).join("；") || x.maximumRisk || x.risk || "-"}<br><span class="muted">${x.action || "-"}</span></td>

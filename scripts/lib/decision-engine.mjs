@@ -217,7 +217,7 @@ function buildUnifiedEvents(hardEvents = [], publicNews = []) {
   });
 }
 
-function buildChiefDecision({ marketRegime, indices, internals, portfolioAdvice, events, dataHealth, guidanceTarget }) {
+function buildChiefDecision({ marketRegime, indices, internals, portfolioAdvice, events, dataHealth, guidanceTarget, candidates = [], valueIdeas = [], fiveXIdeas = [], modelAnalysis = {} }) {
   const importantEvents = events.filter(item => item.importance === "高").slice(0, 2);
   const conclusions = [
     {
@@ -241,6 +241,82 @@ function buildChiefDecision({ marketRegime, indices, internals, portfolioAdvice,
       confidence: event.credibility
     }))
   ].slice(0, 5);
+  const topIndustries = (internals?.activeIndustries || []).slice(0, 3);
+  const topElasticity = candidates.find(item => Number(item.elasticityScore ?? item.score) >= 70 && item.valuationValid !== false);
+  const topValue = valueIdeas.find(item => Number(item.compositeScore) >= 70 && item.valuationValid !== false && Number(item.upsideMultiple) > 1);
+  const topFiveX = fiveXIdeas.find(item => Number(item.fiveXPotentialIndex) >= 85);
+  const recommendations = [
+    {
+      type: "市场与仓位",
+      recommendation: marketRegime?.positionGuide || "数据不足时降低仓位和交易频率",
+      why: `${marketRegime?.summary || internals?.read || "市场结构待确认"}；全A宽度：${internals?.read || "待确认"}`,
+      trigger: "指数趋势、全A宽度和主线成交至少两项同步改善才提高仓位",
+      action: marketRegime?.score >= 3 ? "分批提高主线仓位，不追连续加速" : marketRegime?.score <= -3 ? "优先降低高波动和弱趋势仓位" : "保持均衡，等待主线确认",
+      risk: "指数被少数权重拉动、板块宽度不扩散或海外风险反转",
+      validFor: guidanceTarget || "下一阶段",
+      confidence: confidenceLabel(Boolean(marketRegime?.regime), Boolean(internals?.sampleSize), !dataHealth.degraded)
+    },
+    ...(topIndustries.length ? [{
+      type: "行业优先级",
+      recommendation: `优先研究${topIndustries.map(item => item.industry).join("、")}`,
+      why: topIndustries.map(item => `${item.industry}：平均涨跌${item.avgPct ?? "-"}%、上涨占比${item.upRatio ?? "-"}%、成交占比${item.amountShare ?? "-"}%`).join("；"),
+      trigger: "行业连续两日强于全A、成交占比抬升且龙头不冲高回落",
+      action: "先研究产业和财报兑现，再从爬坡/主升初期公司中选择",
+      risk: "可能只是一日脉冲；若成交占比和上涨家数次日回落则降级",
+      validFor: "1-5个交易日",
+      confidence: "中"
+    }] : []),
+    {
+      type: "持仓处理",
+      recommendation: `优先加仓：${portfolioAdvice.portfolio.preferredAdd}；优先减仓：${portfolioAdvice.portfolio.preferredReduce}`,
+      why: `${portfolioAdvice.portfolio.sharedRisk}；组合集中度风险${portfolioAdvice.portfolio.concentrationRisk}`,
+      trigger: "只按每只持仓页面列出的财报、估值和技术触发条件执行",
+      action: `需要资金时优先从${portfolioAdvice.portfolio.fundingSource}调配`,
+      risk: "同产业集中暴露、财报不及预期或股价进入乐观估值区",
+      validFor: "1-5个交易日或直至持仓变化",
+      confidence: portfolioAdvice.items.every(item => item.confidence !== "低") ? "中" : "低"
+    },
+    ...(topElasticity ? [{
+      type: "主升启动观察",
+      recommendation: `${topElasticity.name}（${topElasticity.code}）仅在触发后进入验证`,
+      why: `强弹性${topElasticity.elasticityScore ?? topElasticity.score}分；${topElasticity.selectionReason || topElasticity.industryCatalyst || "趋势、资金和产业共同评分"}`,
+      trigger: topElasticity.buyPoint || "平台突破或首次缩量回踩不破",
+      action: "触发前只观察，触发后小仓验证，不追连续大阳",
+      risk: topElasticity.risk || "资金短炒或业绩无法兑现",
+      validFor: "1-3个月模型，买点按1-5日验证",
+      confidence: "中"
+    }] : []),
+    ...(topValue ? [{
+      type: "成长价值观察",
+      recommendation: `${topValue.name}（${topValue.code}）进入基本面复核`,
+      why: `综合${topValue.compositeScore}分；产业${topValue.industryScore ?? "-"}、成长${topValue.growthScore ?? "-"}、统一成长空间${topValue.upsideMultiple ?? "-"}倍`,
+      trigger: topValue.catalyst || topValue.keyCheck || "下一份财报确认增长和现金流",
+      action: "财报、行业景气和估值三项确认后再决定买点",
+      risk: topValue.maximumRisk || topValue.risk || "价值陷阱或成长不及预期",
+      validFor: "1个季度",
+      confidence: "中"
+    }] : []),
+    ...(topFiveX ? [{
+      type: "长期成长研究",
+      recommendation: `${topFiveX.name}（${topFiveX.code}）作为五倍股长期研究样本`,
+      why: topFiveX.coreLogic,
+      trigger: topFiveX.futureCatalysts,
+      action: "不以长期空间替代短期买点，按财报逐季验证",
+      risk: topFiveX.risk,
+      validFor: "1-3年，季度复核",
+      confidence: "中"
+    }] : []),
+    ...(modelAnalysis?.finalCommand ? [{
+      type: "深度模型复核",
+      recommendation: modelAnalysis.finalCommand,
+      why: modelAnalysis.summary || "深度模型结合行情、事件和组合约束复核",
+      trigger: "硬数据与规则引擎结论一致",
+      action: "仅作为交叉验证，不覆盖公告和财务硬事实",
+      risk: "模型结论可能受新闻覆盖和数据时效限制",
+      validFor: guidanceTarget || "下一阶段",
+      confidence: /失败|降级/.test(modelAnalysis.status || "") ? "低" : "中"
+    }] : [])
+  ].slice(0, 6);
   return {
     generatedAt: dataHealth.generatedAt,
     marketStage: {
@@ -252,6 +328,7 @@ function buildChiefDecision({ marketRegime, indices, internals, portfolioAdvice,
       basis: marketRegime?.summary || "等待数据"
     },
     coreConclusions: conclusions,
+    recommendations,
     holdingActionSummary: portfolioAdvice.items.map(item => ({ name: item.name, action: item.action, priority: item.priority, reason: item.reasons[0], confidence: item.confidence })),
     watchList: [
       "上证、创业板、科创50、沪深300和中证1000趋势是否共振",
@@ -298,8 +375,25 @@ function buildFundingStructure(internals = {}, indices = []) {
 }
 
 function buildGlobalTransmission(globalMarkets = [], signals = []) {
+  const quoteFor = source => {
+    const names = source.includes("美股") || source.includes("费半")
+      ? ["半导体ETF", "纳斯达克100", "纳斯达克"]
+      : source.includes("韩国")
+        ? ["韩国KOSPI"]
+        : source.includes("日经")
+          ? ["日经225"]
+          : source.includes("港股")
+            ? ["恒生指数"]
+            : [];
+    return names.map(name => globalMarkets.find(item => item.name === name)).filter(Boolean);
+  };
   return signals.map(signal => ({
-    event: signal.watch,
+    event: (() => {
+      const quotes = quoteFor(signal.source);
+      return quotes.length
+        ? `${signal.source}日度信号：${quotes.map(item => `${item.name}${Number.isFinite(Number(item.pct)) ? `${Number(item.pct).toFixed(2)}%` : "涨跌待确认"}`).join("，")}`
+        : `${signal.source}日度数据未接入，固定观察项不作为当天结论`;
+    })(),
     market: signal.source,
     affectedGlobalChain: signal.watch,
     productOrderCapexPath: "海外价格/订单/资本开支变化→A股相关产业盈利预期",
@@ -308,12 +402,18 @@ function buildGlobalTransmission(globalMarkets = [], signals = []) {
     indirectBeneficiaries: signal.aShareMap,
     potentialLosers: "与海外信号反向暴露或估值过高的公司",
     realExposure: "读取统一业务结构；纯概念映射不计入基本面评分",
-    impactStrength: "中",
+    impactStrength: (() => {
+      const moves = quoteFor(signal.source).map(item => Math.abs(Number(item.pct))).filter(Number.isFinite);
+      const maxMove = moves.length ? Math.max(...moves) : null;
+      return maxMove === null ? "待确认" : maxMove >= 3 ? "高" : maxMove >= 1 ? "中" : "低";
+    })(),
     impactCycle: "1周至1季度",
-    pricedIn: "待结合A股相对强弱和成交验证",
+    pricedIn: "当日海外变化只作为先验，需结合A股同产业相对强弱和成交验证",
     source: globalMarkets.find(item => signal.source.includes(item.name))?.name || signal.source,
-    updatedAt: globalMarkets.find(item => signal.source.includes(item.name))?.time || null,
-    confidence: "中",
+    updatedAt: quoteFor(signal.source).map(item => item.time).filter(Boolean)[0] || null,
+    confidence: quoteFor(signal.source).length ? "中" : "低",
+    dailyVerified: quoteFor(signal.source).length > 0,
+    dailyQuotes: quoteFor(signal.source).map(item => ({ name: item.name, close: item.close, pct: item.pct, time: item.time })),
     action: signal.action
   }));
 }

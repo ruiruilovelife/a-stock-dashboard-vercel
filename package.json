@@ -8,6 +8,7 @@
     "test:elasticity": "node scripts/test-elasticity-model.mjs",
     "test:unified": "node scripts/test-unified-research-engine.mjs",
     "test:value": "node scripts/test-value-quality.mjs",
-    "test:decision": "node scripts/test-decision-layer.mjs"
+    "test:decision": "node scripts/test-decision-layer.mjs",
+    "audit:forward": "node scripts/audit-forward-valuations.mjs"
   }
 }
