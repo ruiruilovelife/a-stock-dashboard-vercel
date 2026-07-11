@@ -9,6 +9,7 @@ const companies = ideas.map(item => ({
   name: item.name,
   industry: item.industryLabel || item.theme,
   legalIndustry: item.industryLabel || item.theme,
+  coreBusiness: [item.industryChain, item.logic].filter(Boolean).join(" / "),
   close: item.close,
   marketCapYi: item.marketCapYi || item.currentMcapYi,
   totalSharesYi: Number(item.close) > 0 ? Number(item.marketCapYi || item.currentMcapYi) / Number(item.close) : null,

@@ -47,7 +47,7 @@ const samples = [
   [company("601336", "新华保险", "保险", { close: 62.98, marketCapYi: 1964.7, totalSharesYi: -0.3128, peTtm: 5.3, pb: 1.59, psTtm: 1.3 }), financial({ revenueCagr3Y: 48.5, profitCagr3Y: 104.1, roe: 34.69 }), {}, "insurance"],
   [company("601128", "常熟银行", "银行", { peTtm: 7, pb: 0.8 }), financial(), {}, "bank"],
   [company("600030", "中信证券", "证券", { peTtm: 15, pb: 1.2 }), financial(), {}, "securities"],
-  [company("600160", "巨化股份", "化学制品", { peTtm: 12, pb: 2.5 }), financial({ latestProfitGrowth: 90 }), { cyclePosition: "peak" }, "cyclical_resources"],
+  [company("600160", "巨化股份", "高端制造", { peTtm: 12, pb: 2.5, coreBusiness: "制冷剂/氟化工" }), financial({ latestProfitGrowth: 90 }), { cyclePosition: "peak" }, "cyclical_resources"],
   [company("600570", "传统业务转AI样本", "软件服务"), financial(), { newBusinessName: "AI应用", newBusinessRevenueSharePct: 15, newBusinessProfitSharePct: 10, newBusinessOrderSharePct: 20, commercializationCode: "small_scale" }, "software_platform"],
   [company("300666", "江丰电子", "半导体材料", { peTtm: 35, psTtm: 6 }), financial(), {}, "semiconductor_advanced"],
   [company("300124", "汇川技术", "工业自动化", { peTtm: 30 }), financial(), {}, "semiconductor_advanced"],

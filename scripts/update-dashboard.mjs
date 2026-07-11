@@ -11,8 +11,9 @@ import {
 } from "./lib/decision-engine.mjs";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.5";
-const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.5";
+const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.6-sol";
+const OPENAI_DEEP_MODEL = process.env.OPENAI_DEEP_MODEL || "gpt-5.6-sol";
+const OPENAI_REASONING_EFFORT = process.env.OPENAI_REASONING_EFFORT || "max";
 const REQUIRE_MODEL_ANALYSIS = (process.env.REQUIRE_MODEL_ANALYSIS || "true") !== "false";
 const TUSHARE_TOKEN = process.env.TUSHARE_TOKEN || "";
 
@@ -5238,6 +5239,7 @@ async function buildModelAnalysis(dashboard, session) {
       },
       body: JSON.stringify({
         model,
+        reasoning: { effort: OPENAI_REASONING_EFFORT },
         input: [
           {
             role: "system",
@@ -5439,6 +5441,16 @@ async function main() {
     commercializationCode: "none",
     customerQuality: item.moatLevel >= 4 ? "high" : item.moatLevel >= 3 ? "medium" : "low"
   }]));
+  const verifiedIndustryByCode = new Map(FUTURE_GROWTH_UNIVERSE.map(item => [item.code, item]));
+  marketWideSnapshot = marketWideSnapshot.map(row => {
+    const verified = verifiedIndustryByCode.get(row.code);
+    if (!verified) return row;
+    return {
+      ...row,
+      coreBusiness: [row.coreBusiness, verified.industry, verified.chain].filter(Boolean).join(" / "),
+      businessDescription: [row.businessDescription, verified.growthWhy].filter(Boolean).join("；")
+    };
+  });
   const calculatedAt = chinaTimeString();
   let companyResearchResult = buildCompanyResearchUniverse(
     marketWideSnapshot,
