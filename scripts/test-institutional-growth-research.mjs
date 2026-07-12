@@ -42,7 +42,7 @@ const daily = [{
   upDownVolumePass: true,
   phase: "主升初期"
 }];
-const result = buildInstitutionalGrowthResearch(rows, daily, research);
+const result = await buildInstitutionalGrowthResearch(rows, daily, research, new Map());
 assert.equal(result.scanStats.scanned, 3, "必须扫描全部可买样本");
 assert.equal(result.scanStats.growthResearchRetained, 3, "估值缺失不得删除成长样本");
 assert.equal(result.scanStats.valuationPending, 2);

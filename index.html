@@ -266,6 +266,31 @@
       return "reasonable";
     }
 
+    function fmtWan(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return "待补";
+      if (Math.abs(number) >= 10000) return `${(number / 10000).toFixed(2)}亿`;
+      return `${number.toFixed(0)}万`;
+    }
+
+    function institutionalEvidence(item) {
+      const parts = [];
+      if (item.fundFlow) {
+        parts.push(`5日主力 ${fmtWan(item.fundFlow.net5dAmountWan)}（${item.fundFlow.tradeDate || "日期待补"}）`);
+      }
+      if (item.chip) {
+        const winner = Number(item.chip.winnerRate);
+        parts.push(`筹码均价 ${item.chip.averageCost ?? "-"}，获利盘 ${Number.isFinite(winner) ? `${winner.toFixed(1)}%` : "待补"}`);
+      }
+      if (item.institutionResearch?.records90d) {
+        parts.push(`近90日机构调研 ${item.institutionResearch.records90d}场，最近 ${item.institutionResearch.latestDate || "-"}`);
+      }
+      if (item.sellerConsensus?.consensusBrokerCount) {
+        parts.push(`${item.sellerConsensus.consensusBrokerCount}家机构预测 ${item.sellerConsensus.consensusQuarter || ""} 净利中位数 ${item.sellerConsensus.consensusProfitYi ?? "-"}亿`);
+      }
+      return parts.length ? parts.join("<br>") : "特色证据待补，不按零值计分";
+    }
+
     function card(title, body) {
       return `<div class="card"><h2>${title}</h2>${body}</div>`;
     }
@@ -755,6 +780,7 @@
       if (id === "candidates") {
         const candidates = state.candidates || [];
         const tracked = state.trackedCandidates || [];
+        const intel = state.tushareIntelligence || {};
         html = `
           <div class="card notice dense">
             <h2>AI主升启动雷达</h2>
@@ -768,6 +794,7 @@
             <p><b>交易权限口径：</b>科创板和北证暂不进入可买候选；但科创50、科创半导体设备/材料/创新药仍作为科技风向和产业链映射观察。创业板可以进入候选。</p>
             <p><b>美股涨幅榜映射：</b>如果美股涨幅榜集中出现AI硬件、光模块、电力基础设施、金融科技或创新药，A股候选池会优先看对应映射方向；单只美股异动不算主线。</p>
             <p><b>日韩涨幅榜映射：</b>日本主要验证半导体设备、机器人、汽车电子；韩国主要验证存储/HBM、电池材料和互联网风险偏好。涨幅榜必须看板块集体性和涨幅逻辑。</p>
+            <p><b>Tushare特色数据：</b>资金流覆盖${intel.fundFlow?.coveredStocks ?? 0}只（${intel.fundFlow?.tradeDate || "日期待补"}）；筹码与机构调研重点覆盖${intel.focusResearch?.coveredStocks ?? 0}只。接口缺失时显示“待补”，不会按零分处罚。</p>
           </div>
           <div class="section card"><h2>今日 5 只主升启动候选</h2>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>排名</th><th>股票</th><th>启动阶段</th><th>强弹性评分</th><th>资金强度</th><th>产业催化</th><th>竞争壁垒</th><th>主升概率/类型</th><th>失败风险</th></tr></thead><tbody>
@@ -776,7 +803,7 @@
                 <td><b>${c.name}</b><br><span class="muted">${c.code || ""}</span><br><span class="muted">${c.theme || "-"}</span></td>
                 <td><b>${c.phase || "待确认"}</b><br><span class="muted">3个月 ${fmtPct(c.quarterReturn)}；1年 ${fmtPct(c.yearReturn)}</span><br><span class="muted">20/60周线：${c.closeAbove20w ? "上" : "下"}/${c.closeAbove60w ? "上" : "下"}；长期整理：${c.longConsolidation ? "是" : "否"}</span></td>
                 <td><b>${c.elasticityScore ?? c.score ?? "-"}/100</b><br><span class="muted">趋势 ${c.trendStartupScore ?? "-"}/30<br>资金 ${c.capitalEntryScore ?? "-"}/30<br>产业 ${c.industryCatalystScore ?? "-"}/30<br>壁垒 ${c.moatScore ?? "-"}/10</span></td>
-                <td><b>${c.capitalStrength ?? "-"}/10</b><br><span class="muted">量能台阶：${c.volumeStairPass ? "确认" : "未确认"}<br>涨放跌缩：${c.upDownVolumePass ? "确认" : "未确认"}<br>换手率：${c.turnover ?? "-"}%</span></td>
+                <td><b>${c.capitalStrength ?? "-"}/10</b><br><span class="muted">量能台阶：${c.volumeStairPass ? "确认" : "未确认"}<br>涨放跌缩：${c.upDownVolumePass ? "确认" : "未确认"}<br>换手率：${c.turnover ?? "-"}%<br>${institutionalEvidence(c)}</span></td>
                 <td><b>${c.industryTier || "-"}级</b> ${c.industryLabel || c.theme || "-"}<br>${c.industryCatalyst || "等待订单、政策、产品或业绩催化"}<br><span class="muted">${c.financialEdge || "财务边际待确认"}</span></td>
                 <td><b>${c.moatScore ?? "-"}/10</b><br>${c.moatScore >= 8 ? "壁垒较强" : c.moatScore >= 5 ? "具备一定壁垒" : "壁垒证据待补"}<br><span class="muted">当前市值 ${c.marketCapYi ?? "-"}亿，用于准入过滤但不计分</span></td>
                 <td>${stars(c.mainRiseProbability || 0)}<br><b>${c.type || "待分类"}</b><br><span class="muted">${c.buyPoint || "等待右侧确认"}</span></td>
@@ -853,12 +880,14 @@
         const growthScan = state.futureGrowthScanStats || {};
         const davisDouble = state.davisDoubleCandidates || [];
         const trackedFiveX = state.trackedFiveXIdeas || [];
+        const intel = state.tushareIntelligence || {};
         html = `
           <div class="card notice dense">
             <h2>${model.title || "未来成长股发现系统"}</h2>
             <p><b>核心结论：</b>${model.conclusion || "先研究产业和公司，再用技术资金找买点。"}</p>
             <p><b>样本口径：</b>${model.sampleNote || "代表性样本用于提炼框架，不等于完整名单。"}</p>
             <p><b>本次扫描：</b>${growthScan.scanned ?? "-"}只可买样本；成长研究保留${growthScan.growthResearchRetained ?? "-"}只；估值证据完整${growthScan.valuationReady ?? "-"}只；估值待补${growthScan.valuationPending ?? "-"}只。估值待补不会从成长排名删除。</p>
+            <p><b>机构证据层：</b>${intel.sellerConsensus?.source || "盈利预测待接入"}，覆盖${intel.sellerConsensus?.coveredStocks ?? 0}只、近150日${intel.sellerConsensus?.reportRows ?? 0}条预测记录；${intel.researchReport?.note || "研报全文权限单独核验。"}</p>
             <div class="subtabs">
               <a class="subtab" href="#future-five-x">未来5倍候选池</a>
               <a class="subtab" href="#davis-double">戴维斯双击</a>
@@ -881,7 +910,7 @@
                 <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
                 <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 估值${c.valuationPotentialScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
                 <td>当前约${c.marketCapYi ?? c.currentMcapYi ?? "-"}亿<br>目标约${c.targetMcapYi ?? "-"}亿<br><b>${c.upsideMultiple ?? "-"}倍空间</b></td>
-                <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}<br><span class="muted"><b>历史共性匹配：</b>${(c.historicalPatternMatched || []).join("；") || "待补历史行情"}<br><b>仍缺：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
+                <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}<br><span class="muted"><b>机构/筹码：</b><br>${institutionalEvidence(c)}<br><b>历史共性匹配：</b>${(c.historicalPatternMatched || []).join("；") || "待补历史行情"}<br><b>仍缺：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
                 <td>${Array.isArray(c.investmentLogicCard?.futureCatalysts) ? c.investmentLogicCard.futureCatalysts.join("；") : c.futureCatalysts || "-"}</td>
                 <td>${c.investmentLogicCard?.maxRisk || c.risk || "-"}</td>
               </tr>`).join("") || `<tr><td colspan="7">本期没有同时满足“70分、三倍空间、财务改善和估值证据完整”的正式候选；这不等于删除成长样本，请看下方全市场成长研究排名。</td></tr>`}
@@ -896,7 +925,7 @@
                 <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
                 <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
                 <td>${c.valuationPending ? "估值待补，保留排名" : `${c.marketCapYi ?? "-"}亿 → ${c.targetMcapYi ?? "-"}亿；${c.upsideMultiple ?? "-"}倍`}</td>
-                <td>${c.coreLogic || c.fiveXRead || "-"}<br><span class="muted"><b>历史共性：</b>${(c.historicalPatternMatched || []).join("；") || "待补"}<br><b>缺项：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
+                <td>${c.coreLogic || c.fiveXRead || "-"}<br><span class="muted"><b>机构/筹码：</b><br>${institutionalEvidence(c)}<br><b>历史共性：</b>${(c.historicalPatternMatched || []).join("；") || "待补"}<br><b>缺项：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
                 <td>${c.risk || "-"}</td>
               </tr>`).join("") || `<tr><td colspan="6">本次全市场成长研究数据未生成。</td></tr>`}
             </tbody></table></div>

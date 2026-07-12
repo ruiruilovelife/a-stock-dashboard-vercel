@@ -836,6 +836,17 @@ function tushareCodeToAShareCode(tsCode) {
   return String(tsCode || "").split(".")[0];
 }
 
+function aShareCodeToTushareCode(code) {
+  const value = tushareCodeToAShareCode(code);
+  if (!/^\d{6}$/.test(value)) return "";
+  return `${value}.${value.startsWith("6") ? "SH" : "SZ"}`;
+}
+
+function tushareDateOffset(daysAgo = 0) {
+  const date = new Date(Date.now() - Number(daysAgo || 0) * 86400000);
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function recentTradeDateCandidates(days = 10) {
   const dates = [];
   const now = new Date();
@@ -880,6 +891,147 @@ async function fetchTusharePaged(apiName, params, fields, pageSize = 5000, maxPa
     rows.push(...batch);
   }
   return rows;
+}
+
+function medianNumber(values) {
+  const numbers = (values || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!numbers.length) return null;
+  const middle = Math.floor(numbers.length / 2);
+  return numbers.length % 2 ? numbers[middle] : (numbers[middle - 1] + numbers[middle]) / 2;
+}
+
+function aggregateSellerConsensus(rows = []) {
+  const currentYear = new Date().getFullYear();
+  const grouped = new Map();
+  for (const row of rows) {
+    const code = tushareCodeToAShareCode(row.ts_code);
+    if (!code) continue;
+    const quarter = String(row.quarter || "");
+    const year = Number(quarter.slice(0, 4));
+    if (!/Q4$/i.test(quarter) || !Number.isFinite(year) || year < currentYear) continue;
+    const key = `${code}:${quarter}`;
+    const group = grouped.get(key) || [];
+    group.push(row);
+    grouped.set(key, group);
+  }
+  const candidatesByCode = new Map();
+  for (const [key, group] of grouped) {
+    const [code, quarter] = key.split(":");
+    const brokers = new Set(group.map(row => row.org_name).filter(Boolean));
+    const profitWan = medianNumber(group.map(row => toNumber(row.np)).filter(value => value !== null));
+    const revenueWan = medianNumber(group.map(row => toNumber(row.op_rt)).filter(value => value !== null));
+    const candidate = {
+      code,
+      consensusQuarter: quarter,
+      consensusReportCount: group.length,
+      consensusBrokerCount: brokers.size,
+      consensusProfitYi: profitWan === null ? null : profitWan / 10000,
+      consensusRevenueYi: revenueWan === null ? null : revenueWan / 10000,
+      consensusEps: medianNumber(group.map(row => row.eps)),
+      consensusPe: medianNumber(group.map(row => row.pe)),
+      consensusTargetPrice: medianNumber(group.flatMap(row => [row.max_price, row.min_price])),
+      consensusRatings: [...new Set(group.map(row => row.rating).filter(Boolean))].slice(0, 5),
+      consensusLatestReports: [...group]
+        .sort((a, b) => String(b.report_date || "").localeCompare(String(a.report_date || "")))
+        .slice(0, 5)
+        .map(row => ({ date: row.report_date, title: row.report_title, broker: row.org_name, rating: row.rating }))
+    };
+    for (const field of ["consensusProfitYi", "consensusRevenueYi", "consensusEps", "consensusPe", "consensusTargetPrice"]) {
+      if (!Number.isFinite(candidate[field])) candidate[field] = null;
+      else candidate[field] = Number(candidate[field].toFixed(2));
+    }
+    const existing = candidatesByCode.get(code);
+    if (!existing || Number(quarter.slice(0, 4)) < Number(existing.consensusQuarter.slice(0, 4))) {
+      candidatesByCode.set(code, candidate);
+    }
+  }
+  return candidatesByCode;
+}
+
+async function fetchTushareSellerConsensus() {
+  if (!TUSHARE_TOKEN) return { byCode: new Map(), covered: 0, source: "Tushare盈利预测未配置" };
+  const rows = await fetchTusharePaged(
+    "report_rc",
+    { start_date: tushareDateOffset(150), end_date: tushareDateOffset(0) },
+    "ts_code,name,report_date,report_title,report_type,classify,org_name,author_name,quarter,op_rt,op_pr,tp,np,eps,pe,rd,roe,ev_ebitda,rating,max_price,min_price,imp_dg,create_time",
+    3000,
+    5
+  );
+  const byCode = aggregateSellerConsensus(rows);
+  return {
+    byCode,
+    covered: byCode.size,
+    reportRows: rows.length,
+    source: "Tushare券商盈利预测(report_rc，近150日)"
+  };
+}
+
+async function fetchLatestTushareRows(apiName, fields, params = {}) {
+  let lastError = null;
+  for (const tradeDate of recentTradeDateCandidates(10)) {
+    try {
+      const rows = await fetchTusharePaged(apiName, { ...params, trade_date: tradeDate }, fields, 6000, 2);
+      if (rows.length) return { rows, tradeDate };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  return { rows: [], tradeDate: null };
+}
+
+async function fetchTushareMarketFundFlow() {
+  if (!TUSHARE_TOKEN) return { byCode: new Map(), covered: 0, tradeDate: null, source: "Tushare资金流未配置" };
+  const result = await fetchLatestTushareRows(
+    "moneyflow_ths",
+    "trade_date,ts_code,name,pct_change,latest,net_amount,net_d5_amount,buy_lg_amount,buy_lg_amount_rate"
+  );
+  const byCode = new Map(result.rows.map(row => [tushareCodeToAShareCode(row.ts_code), {
+    tradeDate: row.trade_date,
+    netAmountWan: toNumber(row.net_amount),
+    net5dAmountWan: toNumber(row.net_d5_amount),
+    largeBuyWan: toNumber(row.buy_lg_amount),
+    largeBuyRate: toNumber(row.buy_lg_amount_rate)
+  }]));
+  return { byCode, covered: byCode.size, tradeDate: result.tradeDate, source: "Tushare同花顺个股资金流(moneyflow_ths)" };
+}
+
+async function fetchTushareFocusIntelligence(codes = []) {
+  if (!TUSHARE_TOKEN) return { byCode: new Map(), covered: 0, source: "Tushare特色数据未配置" };
+  const uniqueCodes = [...new Set(codes.map(tushareCodeToAShareCode).filter(Boolean))].slice(0, 80);
+  const byCode = new Map();
+  for (let index = 0; index < uniqueCodes.length; index += 8) {
+    const batch = uniqueCodes.slice(index, index + 8);
+    const results = await Promise.all(batch.map(async code => {
+      const tsCode = aShareCodeToTushareCode(code);
+      const [chipRows, researchRows] = await Promise.all([
+        fetchTushare("cyq_perf", { ts_code: tsCode, start_date: tushareDateOffset(45), end_date: tushareDateOffset(0) }, "ts_code,trade_date,his_low,his_high,cost_5pct,cost_15pct,cost_50pct,cost_85pct,cost_95pct,weight_avg,winner_rate")
+          .catch(() => []),
+        fetchTushare("stk_surv", { ts_code: tsCode, start_date: tushareDateOffset(90), end_date: tushareDateOffset(0) }, "ts_code,name,surv_date,fund_visitors,rece_place,rece_mode,rece_org,org_type,comp_rece")
+          .catch(() => [])
+      ]);
+      const chip = [...chipRows].sort((a, b) => String(b.trade_date).localeCompare(String(a.trade_date)))[0];
+      const research = [...researchRows].sort((a, b) => String(b.surv_date).localeCompare(String(a.surv_date)));
+      return [code, {
+        chip: chip ? {
+          tradeDate: chip.trade_date,
+          averageCost: toNumber(chip.weight_avg),
+          medianCost: toNumber(chip.cost_50pct),
+          cost15: toNumber(chip.cost_15pct),
+          cost85: toNumber(chip.cost_85pct),
+          winnerRate: toNumber(chip.winner_rate)
+        } : null,
+        institutionResearch: {
+          latestDate: research[0]?.surv_date || null,
+          records90d: research.length,
+          organizations: [...new Set(research.flatMap(row => String(row.rece_org || "").split(/[,，;；]/)).filter(Boolean))].slice(0, 20),
+          modes: [...new Set(research.map(row => row.rece_mode).filter(Boolean))].slice(0, 8)
+        }
+      }];
+    }));
+    for (const [code, value] of results) byCode.set(code, value);
+  }
+  return { byCode, covered: byCode.size, source: "Tushare筹码绩效(cyq_perf)+机构调研(stk_surv)" };
 }
 
 function latestAnnualPeriods(count = 3) {
@@ -2586,6 +2738,12 @@ function elasticityFundsScore(row, weekly) {
   if (Number.isFinite(amountYi) && amountYi >= 2) score += 2;
   if (Number.isFinite(dayPct) && dayPct >= -3 && dayPct <= 5) score += 2;
   if (Number.isFinite(dayPct) && dayPct > 7) score -= 5;
+  const net5d = Number(row.fundFlow?.net5dAmountWan);
+  const largeBuyRate = Number(row.fundFlow?.largeBuyRate);
+  if (Number.isFinite(net5d) && net5d > 0) score += 3;
+  else if (Number.isFinite(net5d) && net5d < 0) score -= 2;
+  if (Number.isFinite(largeBuyRate) && largeBuyRate >= 5) score += 2;
+  else if (Number.isFinite(largeBuyRate) && largeBuyRate <= -5) score -= 2;
   return Number(clampScore(score, 0, 30).toFixed(1));
 }
 
@@ -3120,17 +3278,34 @@ function inferredMoatLevel(research, override) {
   return Math.min(5, level);
 }
 
-function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = [], companyResearchByCode = new Map()) {
+async function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidates = [], companyResearchByCode = new Map(), weeklyProfilesOverride = null) {
   const marketByCode = new Map((marketWideSnapshot || []).map(row => [row.code, row]));
   const dailyByCode = new Map((dailyCandidates || []).map(item => [item.code, item]));
   const overrideByCode = new Map(FUTURE_GROWTH_UNIVERSE.map(item => [item.code, item]));
   const universe = (marketWideSnapshot || [])
     .filter(row => row.buyable && isBuyableAShareCode(row.code))
     .filter(row => !/^ST|^\*ST/.test(row.name || ""));
+  const weeklyPriority = [...universe]
+    .sort((a, b) => {
+      const aResearch = companyResearchByCode.get(a.code);
+      const bResearch = companyResearchByCode.get(b.code);
+      const tierScore = research => ({ S: 3, A: 2, B: 1 }[growthTierForResearch(research)] || 0);
+      return tierScore(bResearch) - tierScore(aResearch)
+        || Number(bResearch?.financial?.latestProfitGrowth || 0) - Number(aResearch?.financial?.latestProfitGrowth || 0);
+    })
+    .slice(0, 120);
+  const growthWeeklyProfiles = weeklyProfilesOverride || await fetchWeeklyProfiles(
+    weeklyPriority.map(row => [symbolFromCode(row.code), row.name, row.code])
+  ).catch(error => {
+    console.warn(`five-x weekly profile fallback: ${error.message}`);
+    return new Map();
+  });
   const all = universe.map(marketRow => {
     const research = companyResearchByCode.get(marketRow.code);
     const override = overrideByCode.get(marketRow.code);
-    const daily = dailyByCode.get(marketRow.code);
+    const dailyCandidate = dailyByCode.get(marketRow.code);
+    const weekly = growthWeeklyProfiles.get(marketRow.code);
+    const daily = weekly ? { ...(dailyCandidate || {}), ...weekly } : dailyCandidate;
     const item = {
       symbol: symbolFromCode(marketRow.code),
       name: marketRow.name,
@@ -5631,6 +5806,16 @@ async function main() {
       valueFinancialResult = eastmoneyFinancial;
     }
   }
+  const sellerConsensusResult = await fetchTushareSellerConsensus().catch(error => {
+    console.warn(`Tushare seller consensus fallback: ${error.message}`);
+    return { byCode: new Map(), covered: 0, reportRows: 0, source: `Tushare盈利预测失败：${error.message}` };
+  });
+  for (const [code, consensus] of sellerConsensusResult.byCode) {
+    valueFinancialResult.byCode.set(code, {
+      ...(valueFinancialResult.byCode.get(code) || {}),
+      ...consensus
+    });
+  }
   if (valueFinancialResult.covered) {
     marketWideSnapshot = marketWideSnapshot.map(row => {
       const financial = valueFinancialResult.byCode.get(row.code);
@@ -5641,6 +5826,16 @@ async function main() {
           : financial?.industry || row.industry
       };
     });
+  }
+  const fundFlowResult = await fetchTushareMarketFundFlow().catch(error => {
+    console.warn(`Tushare fund flow fallback: ${error.message}`);
+    return { byCode: new Map(), covered: 0, tradeDate: null, source: `Tushare资金流失败：${error.message}` };
+  });
+  if (fundFlowResult.covered) {
+    marketWideSnapshot = marketWideSnapshot.map(row => ({
+      ...row,
+      fundFlow: fundFlowResult.byCode.get(row.code) || null
+    }));
   }
   const businessEvidenceByCode = new Map(FUTURE_GROWTH_UNIVERSE.map(item => [item.code, {
     moatLevel: item.moatLevel,
@@ -5810,7 +6005,7 @@ async function main() {
   const valueTrackingQuotes = marketWideSnapshot.length
     ? quoteRowsFromItems(marketWideSnapshot)
     : quoteRowsFromItems(oversoldValueIdeas);
-  const institutionalGrowth = buildInstitutionalGrowthResearch(marketWideSnapshot, dailyCandidates, companyResearchResult.byCode);
+  const institutionalGrowth = await buildInstitutionalGrowthResearch(marketWideSnapshot, dailyCandidates, companyResearchResult.byCode);
   const futureFiveXCandidates = institutionalGrowth.futureFiveXCandidates;
   const davisDoubleCandidates = institutionalGrowth.davisDoubleCandidates;
   const industryChainMap = institutionalGrowth.industryChainMap;
@@ -5818,6 +6013,25 @@ async function main() {
     .filter(isFiveXPoolEligible)
     .sort((a, b) => Number(b.fiveXPotentialIndex ?? -999) - Number(a.fiveXPotentialIndex ?? -999))
     .slice(0, 20);
+  const focusCodes = [
+    ...STOCKS.map(item => item[2]),
+    ...dailyCandidates.slice(0, 30).map(item => item.code),
+    ...fiveXIdeas.slice(0, 30).map(item => item.code),
+    ...oversoldValueIdeas.slice(0, 20).map(item => item.code)
+  ];
+  const focusIntelligence = await fetchTushareFocusIntelligence(focusCodes).catch(error => {
+    console.warn(`Tushare focus intelligence fallback: ${error.message}`);
+    return { byCode: new Map(), covered: 0, source: `Tushare特色数据失败：${error.message}` };
+  });
+  const enrichFocus = items => (items || []).map(item => ({
+    ...item,
+    fundFlow: fundFlowResult.byCode.get(item.code) || item.fundFlow || null,
+    sellerConsensus: sellerConsensusResult.byCode.get(item.code) || null,
+    ...(focusIntelligence.byCode.get(item.code) || {})
+  }));
+  for (const key of ["futureFiveXCandidates", "davisDoubleCandidates", "all"]) {
+    institutionalGrowth[key] = enrichFocus(institutionalGrowth[key]);
+  }
   const trackedValueIdeas = buildRollingResearchPool(previous, "trackedValueIdeas", oversoldValueIdeas, valueTrackingQuotes, {
     minScore: 70,
     scoreField: "compositeScore",
@@ -5951,17 +6165,18 @@ async function main() {
         warnings: item.valuation.warnings,
         audit: item.valuation.audit
       })),
-    candidates: dailyCandidates,
+    candidates: enrichFocus(dailyCandidates),
     elasticityModel: {
       name: "AI主升启动雷达",
       horizon: "未来1-3个月",
-      weights: { trendStartup: 25, capitalEntry: 25, industryCatalyst: 25, upsideSpace: 25 },
+      weights: { trendStartup: 30, capitalEntry: 30, industryCatalyst: 30, moat: 10 },
+      marketCapGateYi: { min: 30, max: 800 },
       preferredPhases: ["爬坡期", "主升初期"],
       excludedPhases: ["加速期", "高位风险"],
       minimumScore: 65,
       typePriority: ["产业趋势型", "周期反转型", "资金驱动型"]
     },
-    fiveXCandidates: fiveXIdeas,
+    fiveXCandidates: enrichFocus(fiveXIdeas),
     futureGrowthUniverse: institutionalGrowth.all,
     futureGrowthScanStats: institutionalGrowth.scanStats,
     futureFiveXCandidates,
@@ -5975,6 +6190,27 @@ async function main() {
       financialCoverage: valueFinancialResult.covered,
       financialPeriods: valueFinancialResult.periods,
       financialSource: valueFinancialResult.source
+    },
+    tushareIntelligence: {
+      sellerConsensus: {
+        source: sellerConsensusResult.source,
+        coveredStocks: sellerConsensusResult.covered,
+        reportRows: sellerConsensusResult.reportRows || 0
+      },
+      fundFlow: {
+        source: fundFlowResult.source,
+        tradeDate: fundFlowResult.tradeDate,
+        coveredStocks: fundFlowResult.covered
+      },
+      focusResearch: {
+        source: focusIntelligence.source,
+        coveredStocks: focusIntelligence.covered,
+        scope: "持仓、强弹性、五倍股和估值质量重点样本"
+      },
+      researchReport: {
+        status: "需单独开通",
+        note: "research_report研报全文/摘要接口不随10000积分自动开放；report_rc盈利预测已经接入。"
+      }
     },
     trackedValueIdeas,
     trackedFiveXIdeas,
@@ -6054,6 +6290,7 @@ export {
   elasticityStartupPhase,
   elasticityTrendScore,
   buildInstitutionalGrowthResearch,
+  aggregateSellerConsensus,
   buildMarketWideValueResearch,
   buildRollingResearchPool,
   fetchEastmoneyAStockSnapshot,
