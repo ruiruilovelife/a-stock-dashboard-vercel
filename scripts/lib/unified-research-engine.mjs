@@ -68,14 +68,31 @@ function detectIndustryFamily(company = {}) {
   const generic = familyId === "generic_industrial";
   const specialized = ["ai_infrastructure", "fluorochemicals", "new_energy_core", "semiconductor_advanced", "software_platform", "innovation_pharma"].includes(familyId);
   const businessVerified = Boolean(businessRule);
+  const legalFamilyId = legalRule?.family || "generic_industrial";
+  const businessFamilyId = businessRule?.family || null;
+  const broadLegalFamily = ["generic_industrial", "mature_manufacturing"].includes(legalFamilyId);
+  const conflict = Boolean(businessFamilyId && !broadLegalFamily && businessFamilyId !== legalFamilyId);
+  const confidence = !legalIndustry || generic
+    ? "low"
+    : conflict
+      ? "low"
+      : businessVerified
+        ? "high"
+        : specialized
+          ? "low"
+          : "medium";
   return {
     familyId,
     legalIndustry: legalIndustry || "无法识别",
     level1: parameters.level1,
     level2: parameters.level2,
-    confidence: !legalIndustry || generic || (specialized && !businessVerified) ? "low" : "medium",
+    confidence,
     matchedBy: businessVerified ? "主营业务" : "法定行业",
     matchedPattern: rule?.pattern || null,
+    legalFamilyId,
+    businessFamilyId,
+    broadLegalFamily,
+    conflict,
     parameters
   };
 }
@@ -324,71 +341,7 @@ function forwardGrowthAssumptions(familyId, financial = {}, evidence = {}) {
     valid: evidenceCount >= 2,
     confidence: evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low",
     marketShareEvidence: evidence.marketShareGrowthPct ?? null,
-    rule: "产业增速决定起点，公司份额、利润率、新业务和政策兑现形成增量；财报增速只用于验证执行力和限制情景，不直接替代产业空间。"
-  };
-}
-
-function projectedBases(bases, assumptions, scenario, years) {
-  const rates = assumptions.rates[scenario];
-  if (!rates) return { ...bases };
-  const realization = Number(assumptions.realization[scenario] || 1);
-  const projectionYears = Math.max(0, years - Number(bases.forecastHorizonYears || 0));
-  const grow = (value, rate) => value && value > 0
-    ? value * Math.pow(1 + (rate / 100) * realization, projectionYears)
-    : value;
-  const scenarioEarnings = numberOrNull(bases.earningsByScenario?.[scenario]) ?? bases.earningsYi;
-  return {
-    ...bases,
-    earningsYi: grow(scenarioEarnings, rates.profitCagrPct),
-    bookValueYi: grow(bases.bookValueYi, Math.min(rates.profitCagrPct, 18)),
-    revenueYi: grow(bases.revenueYi, rates.revenueCagrPct),
-    embeddedValueYi: grow(bases.embeddedValueYi, Math.min(rates.profitCagrPct, 15)),
-    pipelineRnpvYi: bases.pipelineRnpvYi,
-    navYi: grow(bases.navYi, Math.min(rates.revenueCagrPct, 8))
-  };
-}
-
-function scenarioValue(method, scenario, parameters, bases, adjustment, financial = {}, evidence = {}) {
-  const params = parameters.scenarios?.[scenario] || {};
-  const bounds = parameters.reasonableBounds || {};
-  const scenarioAdjustment = scenario === "conservative" ? Math.min(1, adjustment.combined)
-    : scenario === "optimistic" ? Math.max(1, adjustment.combined)
-      : adjustment.combined;
-  let multiple = null;
-  let basis = null;
-  if (method === "P_EV") {
-    multiple = boundMultiple(Number(params.pEv) * scenarioAdjustment, bounds.pEv);
-    basis = bases.embeddedValueYi;
-  } else if (method === "PB") {
-    multiple = boundMultiple(Number(params.pb) * scenarioAdjustment, bounds.pb);
-    basis = bases.bookValueYi;
-  } else if (method === "PIPELINE_RNPV") {
-    multiple = scenario === "conservative" ? 0.75 : scenario === "optimistic" ? 1.25 : 1;
-    basis = bases.pipelineRnpvYi;
-  } else if (method === "NAV") {
-    multiple = scenario === "conservative" ? 0.65 : scenario === "optimistic" ? 1 : 0.82;
-    basis = bases.navYi;
-  } else if (method === "PS") {
-    multiple = boundMultiple(Number(params.ps) * scenarioAdjustment, bounds.ps);
-    basis = bases.revenueYi;
-  } else {
-    multiple = boundMultiple(Number(params.pe) * scenarioAdjustment, bounds.pe);
-    basis = bases.earningsYi;
-    if (method === "MID_CYCLE_PE") {
-      const profitGrowth = numberOrNull(financial.latestProfitGrowth ?? financial.profitCagr3Y);
-      const normalization = evidence.cyclePosition === "peak" ? 0.6 : profitGrowth !== null && profitGrowth > 50 ? 0.72 : 0.88;
-      basis *= normalization;
-    }
-  }
-  if (!Number.isFinite(Number(basis)) || Number(basis) <= 0 || !Number.isFinite(Number(multiple)) || Number(multiple) <= 0) return null;
-  const marketCapYi = Number(basis) * Number(multiple);
-  const roundedMarketCapYi = round(marketCapYi, 0);
-  const targetPrice = bases.totalSharesYi && bases.totalSharesYi > 0 ? roundedMarketCapYi / bases.totalSharesYi : null;
-  return {
-    marketCapYi: roundedMarketCapYi,
-    targetPrice: round(targetPrice, 2),
-    multiple: round(multiple, 2),
-    basisYi: round(basis, 2),
+    rule: "产业增速决定起点，公司份额…820 tokens truncated…sisYi: round(basis, 2),
     method
   };
 }
@@ -420,7 +373,9 @@ function validateValuation({ company, industry, business, financial, bases, meth
   if (bases.shareRepaired) warnings.push("原始总股本字段异常，目标价改用当前市值÷当前股价反推股本");
   const parameters = industry.parameters;
   if (!company.code || !company.name) invalidReasons.push("公司代码或名称缺失");
-  if (industry.confidence === "low" || industry.familyId === "generic_industrial") invalidReasons.push("行业无法可靠识别");
+  if (industry.familyId === "generic_industrial") invalidReasons.push("行业完全无法识别，缺少适配估值框架");
+  else if (industry.confidence === "low") warnings.push("行业证据置信度较低：使用保守情景权重，不因该项单独取消估值");
+  if (industry.conflict) warnings.push("法定行业与主营业务映射冲突：展示估值区间，但在业务迁移证据确认前不进入推荐排名");
   if (!method) invalidReasons.push("缺少行业适配估值基础");
   if (method && parameters.forbiddenMethods?.includes(method)) invalidReasons.push(`估值方法${method}被该行业禁止`);
   if (["insurance", "bank", "securities"].includes(industry.familyId) && method === "PS") invalidReasons.push("金融公司禁止使用普通PS估值");
@@ -463,7 +418,16 @@ function validateValuation({ company, industry, business, financial, bases, meth
 
 function buildValuation(company, financial, industry, business, evidence, stamps) {
   const bases = impliedBases(company, financial);
-  const adjustment = qualityAdjustment(financial, evidence);
+  const rawAdjustment = qualityAdjustment(financial, evidence);
+  const industryConfidenceFactor = industry.confidence === "low" ? 0.9 : industry.confidence === "medium" ? 0.97 : 1;
+  const adjustment = {
+    ...rawAdjustment,
+    combined: round(clamp(rawAdjustment.combined * industryConfidenceFactor, 0.65, 1.35), 3),
+    factors: {
+      ...rawAdjustment.factors,
+      industryConfidence: industryConfidenceFactor
+    }
+  };
   const method = methodForFamily(industry.familyId, bases);
   const forwardAssumptions = forwardGrowthAssumptions(industry.familyId, financial, evidence);
   let scenarios = Object.fromEntries(SCENARIOS.map(name => [name, scenarioValue(method, name, industry.parameters, projectedBases(bases, forwardAssumptions, name, 1), adjustment, financial, evidence)]));
@@ -502,11 +466,12 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     evidence.forwardRevenueYi
   ].filter(value => numberOrNull(value) !== null).length;
   const validation = validateValuation({ company, industry, business, financial, bases, method, scenarios, futureScenarios, forwardAssumptions, marketStamp: stamps.market, financialStamp: stamps.financial });
-  const scenarioConfidence = forwardEvidenceCount >= 2 && forwardAssumptions.confidence === "high"
+  const evidenceConfidence = forwardEvidenceCount >= 2 && forwardAssumptions.confidence === "high"
     ? "high"
     : forwardEvidenceCount >= 1 && forwardAssumptions.confidence !== "low"
       ? "medium"
       : "low";
+  const scenarioConfidence = lowerConfidence(evidenceConfidence, industry.confidence);
   const probabilityWeighted = probabilityWeightedScenario(scenarios, bases, scenarioConfidence);
   const strategicProbabilityWeighted = probabilityWeightedScenario(futureScenarios, bases, scenarioConfidence);
   const centralMcap = strategicProbabilityWeighted?.marketCapYi;
@@ -515,9 +480,14 @@ function buildValuation(company, financial, industry, business, evidence, stamps
   const twelveMonthUpsideMultiple = validation.valid && forwardEvidenceCount > 0 && twelveMonthMcap && bases.currentMcapYi ? round(twelveMonthMcap / bases.currentMcapYi, 2) : null;
   const rankingEligible = validation.valid
     && forwardEvidenceCount > 0
+    && !industry.conflict
+    && industry.familyId !== "generic_industrial"
     && !(industry.familyId === "insurance" && !bases.embeddedValueYi)
     && !(industry.familyId === "utilities" && !numberOrNull(financial.dividendYieldPct));
-  const actionEligible = validation.valid && forwardEvidenceCount > 0;
+  const actionEligible = validation.valid
+    && forwardEvidenceCount > 0
+    && !industry.conflict
+    && industry.familyId !== "generic_industrial";
   return {
     engineVersion: valuationConfig.parameterVersion,
     method,
@@ -531,6 +501,8 @@ function buildValuation(company, financial, industry, business, evidence, stamps
     probabilityWeighted,
     strategicProbabilityWeighted,
     centralValuationMethod: "概率加权情景估值",
+    confidence: scenarioConfidence,
+    industryConflict: industry.conflict,
     forwardAssumptions,
     conservative: scenarios.conservative,
     neutral: scenarios.neutral,
@@ -629,7 +601,11 @@ function buildCompanyResearchSnapshot(company, financial = {}, evidence = {}, co
       level1: industry.level1,
       level2: industry.level2,
       confidence: industry.confidence,
+      matchedBy: industry.matchedBy,
       matchedPattern: industry.matchedPattern,
+      legalFamilyId: industry.legalFamilyId,
+      businessFamilyId: industry.businessFamilyId,
+      conflict: industry.conflict,
       parameterVersion: valuationConfig.parameterVersion,
       keyMetrics: industry.parameters.keyMetrics
     },
@@ -694,3 +670,4 @@ export {
   qualityAdjustment,
   valuationConfig
 };
+
