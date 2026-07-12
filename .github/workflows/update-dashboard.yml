@@ -39,9 +39,9 @@ jobs:
         if: steps.schedule_gate.outputs.should_run == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_DAILY_MODEL: gpt-5.6-sol
-          OPENAI_DEEP_MODEL: gpt-5.6-sol
-          OPENAI_REASONING_EFFORT: max
+          OPENAI_DAILY_MODEL: gpt-5.6-terra
+          OPENAI_DEEP_MODEL: gpt-5.6-terra
+          OPENAI_REASONING_EFFORT: high
           REQUIRE_MODEL_ANALYSIS: "true"
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: npm run update
