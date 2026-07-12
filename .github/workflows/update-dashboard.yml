@@ -1,9 +1,8 @@
 name: Update A Stock Dashboard
 
 on:
-  push:
-    paths:
-      - ".github/workflows/update-dashboard.yml"
+  # Website deployment is handled by Vercel on every GitHub push.
+  # Model/data refresh runs only once per day or when manually requested.
   schedule:
     - cron: "0 10 * * *"
   workflow_dispatch:
@@ -22,16 +21,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
       - name: Schedule gate
         id: schedule_gate
         run: node scripts/schedule-gate.mjs
+
       - name: Apply portfolio config
         if: steps.schedule_gate.outputs.should_run == 'true'
         run: node scripts/apply-portfolio-config.mjs
+
       - name: Update dashboard data
         if: steps.schedule_gate.outputs.should_run == 'true'
         env:
@@ -42,6 +45,7 @@ jobs:
           REQUIRE_MODEL_ANALYSIS: "true"
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: npm run update
+
       - name: Commit updated data
         if: steps.schedule_gate.outputs.should_run == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
