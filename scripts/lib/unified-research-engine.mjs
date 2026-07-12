@@ -93,6 +93,9 @@ function detectIndustryFamily(company = {}) {
     businessFamilyId,
     broadLegalFamily,
     conflict,
+    strategyTier: rule?.tier || "C",
+    strategyTierReason: rule?.tierReason || "产业战略等级待核验",
+    strategyEvidence: businessVerified ? "主营业务匹配" : legalRule?.family !== "generic_industrial" ? "法定行业匹配，主营业务待补" : "行业信息不足",
     parameters
   };
 }
@@ -333,86 +336,7 @@ function forwardGrowthAssumptions(familyId, financial = {}, evidence = {}) {
       profitConversionPct: round(profitConversion, 1),
       newBusinessRevenueContributionPct: round(newBusinessRevenueContribution, 1),
       newBusinessProfitContributionPct: round(newBusinessProfitContribution, 1),
-      policyContributionPct: round(policyContribution, 1)
-    },
-    rates,
-    realization: forwardGrowthConfig.scenarioRealization,
-    evidenceCount,
-    valid: evidenceCount >= 2,
-    confidence: evidenceCount >= 4 ? "high" : evidenceCount >= 2 ? "medium" : "low",
-    marketShareEvidence: evidence.marketShareGrowthPct ?? null,
-    rule: "产业增速决定起点，公司份额、利润率、新业务和政策兑现形成增量；财报增速只用于验证执行力和限制情景，不直接替代产业空间。"
-  };
-}
-
-function projectedBases(bases, assumptions, scenario, years) {
-  const rates = assumptions.rates[scenario];
-  if (!rates) return { ...bases };
-  const realization = Number(assumptions.realization[scenario] || 1);
-  const projectionYears = Math.max(0, years - Number(bases.forecastHorizonYears || 0));
-  const grow = (value, rate) => value && value > 0
-    ? value * Math.pow(1 + (rate / 100) * realization, projectionYears)
-    : value;
-  const scenarioEarnings = numberOrNull(bases.earningsByScenario?.[scenario]) ?? bases.earningsYi;
-  return {
-    ...bases,
-    earningsYi: grow(scenarioEarnings, rates.profitCagrPct),
-    bookValueYi: grow(bases.bookValueYi, Math.min(rates.profitCagrPct, 18)),
-    revenueYi: grow(bases.revenueYi, rates.revenueCagrPct),
-    embeddedValueYi: grow(bases.embeddedValueYi, Math.min(rates.profitCagrPct, 15)),
-    pipelineRnpvYi: bases.pipelineRnpvYi,
-    navYi: grow(bases.navYi, Math.min(rates.revenueCagrPct, 8))
-  };
-}
-
-function scenarioValue(method, scenario, parameters, bases, adjustment, financial = {}, evidence = {}) {
-  const params = parameters.scenarios?.[scenario] || {};
-  const bounds = parameters.reasonableBounds || {};
-  const scenarioAdjustment = scenario === "conservative" ? Math.min(1, adjustment.combined)
-    : scenario === "optimistic" ? Math.max(1, adjustment.combined)
-      : adjustment.combined;
-  let multiple = null;
-  let basis = null;
-  if (method === "P_EV") {
-    multiple = boundMultiple(Number(params.pEv) * scenarioAdjustment, bounds.pEv);
-    basis = bases.embeddedValueYi;
-  } else if (method === "PB") {
-    multiple = boundMultiple(Number(params.pb) * scenarioAdjustment, bounds.pb);
-    basis = bases.bookValueYi;
-  } else if (method === "PIPELINE_RNPV") {
-    multiple = scenario === "conservative" ? 0.75 : scenario === "optimistic" ? 1.25 : 1;
-    basis = bases.pipelineRnpvYi;
-  } else if (method === "NAV") {
-    multiple = scenario === "conservative" ? 0.65 : scenario === "optimistic" ? 1 : 0.82;
-    basis = bases.navYi;
-  } else if (method === "PS") {
-    multiple = boundMultiple(Number(params.ps) * scenarioAdjustment, bounds.ps);
-    basis = bases.revenueYi;
-  } else {
-    multiple = boundMultiple(Number(params.pe) * scenarioAdjustment, bounds.pe);
-    basis = bases.earningsYi;
-    if (method === "MID_CYCLE_PE") {
-      const profitGrowth = numberOrNull(financial.latestProfitGrowth ?? financial.profitCagr3Y);
-      const normalization = evidence.cyclePosition === "peak" ? 0.6 : profitGrowth !== null && profitGrowth > 50 ? 0.72 : 0.88;
-      basis *= normalization;
-    }
-  }
-  if (!Number.isFinite(Number(basis)) || Number(basis) <= 0 || !Number.isFinite(Number(multiple)) || Number(multiple) <= 0) return null;
-  const marketCapYi = Number(basis) * Number(multiple);
-  const roundedMarketCapYi = round(marketCapYi, 0);
-  const targetPrice = bases.totalSharesYi && bases.totalSharesYi > 0 ? roundedMarketCapYi / bases.totalSharesYi : null;
-  return {
-    marketCapYi: roundedMarketCapYi,
-    targetPrice: round(targetPrice, 2),
-    multiple: round(multiple, 2),
-    basisYi: round(basis, 2),
-    method
-  };
-}
-
-function probabilityWeightedScenario(scenarios, bases, confidence = "low") {
-  const weightSets = {
-    high: { conservative: 0.2, neutral: 0.55, optimistic: 0.25 },
+      policyContributionPct: round(policyContribut…955 tokens truncated…timistic: 0.25 },
     medium: { conservative: 0.3, neutral: 0.5, optimistic: 0.2 },
     low: { conservative: 0.45, neutral: 0.4, optimistic: 0.15 }
   };
@@ -665,6 +589,9 @@ function buildCompanyResearchSnapshot(company, financial = {}, evidence = {}, co
       level1: industry.level1,
       level2: industry.level2,
       confidence: industry.confidence,
+      strategyTier: industry.strategyTier,
+      strategyTierReason: industry.strategyTierReason,
+      strategyEvidence: industry.strategyEvidence,
       matchedBy: industry.matchedBy,
       matchedPattern: industry.matchedPattern,
       legalFamilyId: industry.legalFamilyId,
@@ -734,3 +661,4 @@ export {
   qualityAdjustment,
   valuationConfig
 };
+
