@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildCompanyResearchSnapshot, businessTransformationScore } from "./lib/unified-research-engine.mjs";
+import { buildCompanyResearchSnapshot, businessTransformationScore, detectIndustryFamily } from "./lib/unified-research-engine.mjs";
 
 const context = {
   now: new Date("2026-07-11T12:00:00+08:00"),
@@ -50,13 +50,13 @@ const samples = [
   [company("600160", "巨化股份", "高端制造", { peTtm: 12, pb: 2.5, coreBusiness: "制冷剂/氟化工" }), financial({ latestProfitGrowth: 90 }), { cyclePosition: "peak" }, "fluorochemicals"],
   [company("600570", "传统业务转AI样本", "软件服务"), financial(), { newBusinessName: "AI应用", newBusinessRevenueSharePct: 15, newBusinessProfitSharePct: 10, newBusinessOrderSharePct: 20, commercializationCode: "small_scale" }, "software_platform"],
   [company("300666", "江丰电子", "半导体材料", { peTtm: 35, psTtm: 6 }), financial(), {}, "semiconductor_advanced"],
-  [company("300124", "汇川技术", "工业自动化", { peTtm: 30 }), financial(), {}, "semiconductor_advanced"],
+  [company("300124", "汇川技术", "工业自动化", { peTtm: 30 }), financial(), {}, "mature_manufacturing"],
   [company("300624", "未盈利AI软件", "软件服务", { peTtm: -30, psTtm: 5 }), financial({ latestProfitGrowth: -20 }), {}, "software_platform"],
   [company("600519", "消费公司样本", "白酒", { peTtm: 24 }), financial(), {}, "consumer"],
   [company("600900", "公用事业样本", "电力", { peTtm: 16, pb: 2 }), financial(), {}, "utilities"],
-  [company("000100", "多业务经营样本", "电子设备"), financial({ netDebtYi: 10 }), { newBusinessName: "半导体显示", newBusinessRevenueSharePct: 45, newBusinessProfitSharePct: 50, newBusinessOrderSharePct: 50, newBusinessRevenueGrowthPct: 60, newBusinessProfitGrowthPct: 80, commercializationCode: "ramp_up", customerQuality: "high", researchIntensityPct: 10, newBusinessCapexSharePct: 35, segments: [{ name: "传统业务", valueYi: 100 }, { name: "新业务", valueYi: 180 }] }, "semiconductor_advanced"],
+  [company("000100", "多业务经营样本", "电子设备"), financial({ netDebtYi: 10 }), { newBusinessName: "半导体显示", newBusinessRevenueSharePct: 45, newBusinessProfitSharePct: 50, newBusinessOrderSharePct: 50, newBusinessRevenueGrowthPct: 60, newBusinessProfitGrowthPct: 80, commercializationCode: "ramp_up", customerQuality: "high", researchIntensityPct: 10, newBusinessCapexSharePct: 35, segments: [{ name: "传统业务", valueYi: 100 }, { name: "新业务", valueYi: 180 }] }, "mature_manufacturing"],
   [company("688001", "未盈利创新药", "创新药", { peTtm: -10, psTtm: 8 }), financial({ latestProfitGrowth: -50 }), {}, "innovation_pharma"],
-  [company("002281", "海外光通信链样本", "通信设备", { peTtm: 30 }), financial(), {}, "semiconductor_advanced"],
+  [company("002281", "海外光通信链样本", "通信设备", { peTtm: 30 }), financial(), {}, "mature_manufacturing"],
   [company("600048", "地产样本", "房地产", { peTtm: 8, pb: 0.7 }), financial(), {}, "real_estate"],
   [company("600000", "无法分类样本", "未知行业"), financial(), {}, "generic_industrial"],
   [company("000977", "浪潮信息", "IT设备", { coreBusiness: "AI服务器/国产算力" }), financial(), { policyStrengthScore: 4 }, "ai_infrastructure"],
@@ -144,6 +144,11 @@ assert.ok(industryConflict.valuation.warnings.some(item => item.includes("不进
 const weakTransition = businessTransformationScore({ newBusinessName: "AI", commercializationCode: "concept" });
 assert.ok(weakTransition.score <= 20);
 assert.equal(weakTransition.newBusinessValuationWeight, 0);
+
+assert.equal(detectIndustryFamily({ legalIndustry: "电子元器件" }).strategyTier, "A", "泛电子不得仅凭行业名升为S级");
+assert.equal(detectIndustryFamily({ legalIndustry: "电子元器件", coreBusiness: "AI服务器高速PCB" }).strategyTier, "S", "AI服务器核心供给应在主营证据明确时升为S级");
+assert.equal(detectIndustryFamily({ legalIndustry: "半导体材料" }).strategyTier, "S", "半导体核心材料应保持S级");
+assert.equal(detectIndustryFamily({ legalIndustry: "制冷剂" }).strategyTier, "B", "周期品不应被成长标签误升");
 
 console.log(JSON.stringify({
   tested: results.length,
