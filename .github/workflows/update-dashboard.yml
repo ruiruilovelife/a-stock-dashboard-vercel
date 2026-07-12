@@ -1,10 +1,8 @@
 name: Update A Stock Dashboard
 
 on:
-  # One-time manual recovery trigger. It is removed immediately after this run starts.
-  push:
-    paths:
-      - ".github/workflows/update-dashboard.yml"
+  # Website deployment is handled by Vercel on every GitHub push.
+  # Model/data refresh runs only once per day or when manually requested.
   schedule:
     - cron: "0 10 * * *"
   workflow_dispatch:
