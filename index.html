@@ -881,7 +881,7 @@
                 <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
                 <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 估值${c.valuationPotentialScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
                 <td>当前约${c.marketCapYi ?? c.currentMcapYi ?? "-"}亿<br>目标约${c.targetMcapYi ?? "-"}亿<br><b>${c.upsideMultiple ?? "-"}倍空间</b></td>
-                <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}</td>
+                <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}<br><span class="muted"><b>历史共性匹配：</b>${(c.historicalPatternMatched || []).join("；") || "待补历史行情"}<br><b>仍缺：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
                 <td>${Array.isArray(c.investmentLogicCard?.futureCatalysts) ? c.investmentLogicCard.futureCatalysts.join("；") : c.futureCatalysts || "-"}</td>
                 <td>${c.investmentLogicCard?.maxRisk || c.risk || "-"}</td>
               </tr>`).join("") || `<tr><td colspan="7">本期没有同时满足“70分、三倍空间、财务改善和估值证据完整”的正式候选；这不等于删除成长样本，请看下方全市场成长研究排名。</td></tr>`}
@@ -896,7 +896,7 @@
                 <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
                 <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
                 <td>${c.valuationPending ? "估值待补，保留排名" : `${c.marketCapYi ?? "-"}亿 → ${c.targetMcapYi ?? "-"}亿；${c.upsideMultiple ?? "-"}倍`}</td>
-                <td>${c.coreLogic || c.fiveXRead || "-"}</td>
+                <td>${c.coreLogic || c.fiveXRead || "-"}<br><span class="muted"><b>历史共性：</b>${(c.historicalPatternMatched || []).join("；") || "待补"}<br><b>缺项：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
                 <td>${c.risk || "-"}</td>
               </tr>`).join("") || `<tr><td colspan="6">本次全市场成长研究数据未生成。</td></tr>`}
             </tbody></table></div>

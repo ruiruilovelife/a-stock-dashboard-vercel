@@ -31,7 +31,18 @@ const research = new Map([
   }]
 ]);
 
-const result = buildInstitutionalGrowthResearch(rows, [], research);
+const daily = [{
+  code: "300002",
+  quarterReturn: 45,
+  yearReturn: 110,
+  weeklyTrendPass: true,
+  closeAbove20w: true,
+  ma20Rising: true,
+  volumeStairPass: true,
+  upDownVolumePass: true,
+  phase: "主升初期"
+}];
+const result = buildInstitutionalGrowthResearch(rows, daily, research);
 assert.equal(result.scanStats.scanned, 3, "必须扫描全部可买样本");
 assert.equal(result.scanStats.growthResearchRetained, 3, "估值缺失不得删除成长样本");
 assert.equal(result.scanStats.valuationPending, 2);
@@ -39,6 +50,11 @@ assert.equal(result.scanStats.valuationReady, 1);
 assert.ok(result.all.some(item => item.code === "300001" && item.valuationPending), "高成长但估值待补样本必须保留");
 assert.ok(result.futureFiveXCandidates.some(item => item.code === "300002"), "满足70分、三倍空间和财务改善的样本应进入正式候选");
 assert.ok(!result.futureFiveXCandidates.some(item => item.code === "300001"), "缺少估值证据的样本不能输出三倍空间建议");
+const qualified = result.all.find(item => item.code === "300002");
+assert.ok(!("fiveXScore" in qualified), "不得保留旧版10分五倍相似度");
+assert.equal(qualified.score, qualified.fiveXPotentialIndex, "只能使用同一个100分制评分");
+assert.ok(qualified.historicalPatternMatched.includes("周线趋势开始转强"), "历史样本共性必须实际进入判断结果");
+assert.equal(qualified.historicalPatternEligible, true, "启动早中期样本应通过历史位置风控");
 
 const retained = buildRollingResearchPool(
   { trackedFiveXIdeas: [{ code: "300003", name: "普通成长样本", fiveXPotentialIndex: 62, selectedAt: "2026-07-01" }] },

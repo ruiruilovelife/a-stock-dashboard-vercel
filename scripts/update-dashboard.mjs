@@ -2390,7 +2390,6 @@ function isTrackableCandidate(c) {
   return c
     && isBuyableAShareCode(c.code)
     && Number(c.climbScore) >= 6.5
-    && Number(c.fiveXScore ?? 0) >= 6.5
     && Number.isFinite(Number(c.quarterReturn))
     && Number.isFinite(Number(c.yearReturn))
     && Number.isFinite(Number(c.distanceToHighPct))
@@ -2405,28 +2404,6 @@ function isBuyableAShareCode(code) {
   if (/^(688|689)/.test(text)) return false;
   if (/^[89]/.test(text)) return false;
   return true;
-}
-
-function fiveXSimilarity(profile, theme) {
-  const weekly = profile.weekly || {};
-  let score = 0;
-  if (weekly.weeklyTrendPass) score += 2;
-  if (weekly.volumeStairPass) score += 2;
-  if (weekly.upDownVolumePass) score += 1;
-  if (weekly.positionPass) score += 1;
-  if (weekly.quarterReturn >= 20 && weekly.quarterReturn <= 80) score += 2;
-  if (weekly.yearReturn <= 230) score += 1;
-  if (Number.isFinite(profile.marketCapYi) && profile.marketCapYi >= 30 && profile.marketCapYi <= 300) score += 2;
-  if (profile.financialScore >= 1.5) score += 1;
-  if (/AI|算力|PCB|光模块|机器人|低空|创新药|半导体|材料|涨价|高压|液冷|电源|军工|有色|资源/.test(theme)) score += 1;
-  return Math.min(10, score);
-}
-
-function fiveXRead(score) {
-  if (score >= 8) return "高相似：接近历史5倍股早中期画像，需重点盯催化兑现和量能延续。";
-  if (score >= 6.5) return "中高相似：具备部分主升前特征，适合滚动跟踪，不适合一次性重仓。";
-  if (score >= 5) return "中性：题材或形态有亮点，但还缺量能、位置或财务确认。";
-  return "低相似：离历史5倍股启动模型较远，只作普通观察。";
 }
 
 function buildCandidates(quotes, previous, weeklyProfiles, marketCaps) {
@@ -2472,7 +2449,6 @@ function buildCandidates(quotes, previous, weeklyProfiles, marketCaps) {
     ];
     if (styleBonusThemes.some(t => meta[3].includes(t))) score += 1;
     const phase = candidatePhase(profile);
-    const fiveXScore = fiveXSimilarity(profile, meta[3]);
     return {
       name: q.name,
       code: meta[2],
@@ -2481,8 +2457,6 @@ function buildCandidates(quotes, previous, weeklyProfiles, marketCaps) {
       financialEdge: profile.financialEdge,
       score,
       climbScore: profile.climbScore,
-      fiveXScore,
-      fiveXRead: fiveXRead(fiveXScore),
       phase,
       dayPct,
       amount: amountText(q.amountRaw),
@@ -3009,18 +2983,6 @@ function buildRollingResearchPool(previous, key, dailyItems, quoteRows, options 
   }).slice(0, 100);
 }
 
-function mergeResearchItems(items) {
-  const byCode = new Map();
-  for (const item of items || []) {
-    if (!item?.code) continue;
-    const previous = byCode.get(item.code);
-    if (!previous || Number(item.fiveXScore ?? item.score ?? -999) > Number(previous.fiveXScore ?? previous.score ?? -999)) {
-      byCode.set(item.code, item);
-    }
-  }
-  return Array.from(byCode.values());
-}
-
 function industryTrendScore(tier) {
   if (tier === "S") return 30;
   if (tier === "A") return 24;
@@ -3056,17 +3018,51 @@ function valuationPotentialScore(currentMcapYi, targetMcapYi) {
   return 2;
 }
 
-function technicalFundsScore(item, marketRow, dailyCandidate) {
-  let score = 5;
+function fiveXHistoricalPattern(item, marketRow, dailyCandidate) {
+  const matched = [];
+  const missing = [];
+  const quarterReturn = Number(dailyCandidate?.quarterReturn);
+  const yearReturn = Number(dailyCandidate?.yearReturn);
+  const marketCapYi = Number(marketRow?.marketCapYi ?? item.currentMcapYi);
+  if (item.tier === "S" || item.tier === "A") matched.push("产业主线或政策方向明确");
+  else missing.push("产业级别尚未达到A/S级");
+  if (item.financial?.inflection && Number(item.financial?.profit || 0) >= 3) matched.push("利润或利润率出现拐点");
+  else missing.push("业绩拐点尚未确认");
+  if (Number.isFinite(marketCapYi) && marketCapYi >= 50 && marketCapYi <= 500) matched.push("处于历史高弹性常见市值区间");
+  else missing.push("市值不在50-500亿核心区间");
+  if (dailyCandidate?.weeklyTrendPass || (dailyCandidate?.closeAbove20w && dailyCandidate?.ma20Rising)) matched.push("周线趋势开始转强");
+  else missing.push("周线启动证据待补");
+  if (dailyCandidate?.volumeStairPass && dailyCandidate?.upDownVolumePass) matched.push("成交额台阶与涨放跌缩共振");
+  else missing.push("连续吸筹量能尚未确认");
+  if ((Number.isFinite(quarterReturn) && quarterReturn >= 20 && quarterReturn <= 120)
+    || (Number.isFinite(yearReturn) && yearReturn >= 0 && yearReturn <= 230)) matched.push("位置仍处启动或早中期");
+  else if (Number.isFinite(quarterReturn) || Number.isFinite(yearReturn)) missing.push("位置不符合历史启动区间");
+  else missing.push("阶段涨幅数据待补");
+  const overheated = (Number.isFinite(yearReturn) && yearReturn > 230)
+    || (Number.isFinite(quarterReturn) && quarterReturn > 120)
+    || dailyCandidate?.phase === "加速期"
+    || dailyCandidate?.phase === "高位风险";
+  return {
+    matched,
+    missing,
+    eligible: !overheated,
+    risk: overheated ? "历史样本位置显示高位透支，不按早中期五倍候选处理" : "未发现历史位置透支信号"
+  };
+}
+
+function technicalFundsScore(item, marketRow, dailyCandidate, historicalPattern) {
+  let score = 1;
   const dayPct = Number(marketRow?.dayPct ?? dailyCandidate?.dayPct);
   const amountYi = Number(marketRow?.amountRaw) / 100000000;
   const turnover = Number(marketRow?.turnover);
-  const climbScore = Number(dailyCandidate?.climbScore ?? dailyCandidate?.score);
-  if (Number.isFinite(dayPct) && dayPct > 0) score += 1;
-  if (Number.isFinite(dayPct) && dayPct > 5) score += 0.5;
+  if (dailyCandidate?.weeklyTrendPass || (dailyCandidate?.closeAbove20w && dailyCandidate?.ma20Rising)) score += 2.5;
+  if (dailyCandidate?.volumeStairPass) score += 2;
+  if (dailyCandidate?.upDownVolumePass) score += 1.5;
+  if (Number.isFinite(dayPct) && dayPct > 0 && dayPct <= 5) score += 0.5;
   if (Number.isFinite(amountYi) && amountYi >= 3) score += 1;
   if (Number.isFinite(turnover) && turnover >= 0.8 && turnover <= 10) score += 1;
-  if (Number.isFinite(climbScore) && climbScore >= 7) score += 1.5;
+  if (historicalPattern?.matched?.includes("位置仍处启动或早中期")) score += 0.5;
+  if (historicalPattern && !historicalPattern.eligible) score -= 3;
   if (item.attention === "高") score -= 0.8;
   if (item.attention === "中高") score -= 0.3;
   return Number(Math.max(0, Math.min(10, score)).toFixed(1));
@@ -3152,6 +3148,7 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       attention: override?.attention || "待核验"
     };
     const marketCapYi = currentMarketCapForGrowth(item, marketRow, daily);
+    const historicalPattern = fiveXHistoricalPattern(item, marketRow, daily);
     const valuationReady = Boolean(research?.valuation?.rankingEligible);
     const targetMcapYi = valuationReady ? Number(research?.valuation?.strategicProbabilityWeighted?.marketCapYi) : null;
     const upsideMultiple = valuationReady && marketCapYi && targetMcapYi
@@ -3161,11 +3158,11 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
     const moatScore = companyMoatScore(item.moatLevel);
     const growthScore = financialGrowthScore(item.financial);
     const valuationScore = valuationReady ? valuationPotentialScore(marketCapYi, targetMcapYi) : 0;
-    const techScore = technicalFundsScore(item, marketRow, daily);
-    const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
     const performanceImproving = Boolean(item.financial?.inflection) && Number(item.financial?.profit || 0) >= 3;
     const futureProfit5xPotential = Boolean(upsideMultiple && upsideMultiple >= 3) && Number(item.financial?.profit || 0) >= 4;
     const lowAttention = item.attention === "低" || item.attention === "中低" || item.attention === "中";
+    const techScore = technicalFundsScore(item, marketRow, daily, historicalPattern);
+    const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
     const isBuyable = isBuyableAShareCode(item.code);
     const phase = totalScore >= 90
       ? "未来赢家重点池"
@@ -3203,13 +3200,16 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
       technicalFundsScore: techScore,
       totalScore,
       fiveXPotentialIndex: totalScore,
-      fiveXScore: Number((totalScore / 10).toFixed(1)),
-      score: Number((totalScore / 10).toFixed(1)),
+      score: totalScore,
       theme: item.industry,
       phase,
       performanceImproving,
       futureProfit5xPotential,
       lowAttention,
+      historicalPatternMatched: historicalPattern.matched,
+      historicalPatternMissing: historicalPattern.missing,
+      historicalPatternEligible: historicalPattern.eligible,
+      historicalPatternRisk: historicalPattern.risk,
       growthResearchEligible: true,
       valuationPending: !valuationReady,
       recommendationEligible: valuationReady && Number(upsideMultiple) >= 3 && totalScore >= 70,
@@ -3240,6 +3240,7 @@ function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCandidat
     .filter(item => item.totalScore >= 70)
     .filter(item => Number(item.upsideMultiple) >= 3)
     .filter(item => item.performanceImproving)
+    .filter(item => item.historicalPatternEligible)
     .slice(0, 20);
 
   const davisDoubleCandidates = all
@@ -3277,12 +3278,10 @@ function isFiveXPoolEligible(item) {
       && (item.tier === "S" || item.tier === "A")
       && Number(item.upsideMultiple) >= 3
       && item.performanceImproving
+      && item.historicalPatternEligible !== false
       && Number(item.fiveXPotentialIndex) >= 70;
   }
-  if (item.code === "002463") return false; // 沪电股份今年涨幅已过大，不再按早中期5倍候选处理。
-  const yearReturn = Number(item.yearReturn);
-  if (Number.isFinite(yearReturn) && yearReturn > 230) return false;
-  return Number(item.fiveXScore) >= 6.5;
+  return false;
 }
 
 function valueRecoveryScore(q, meta, weekly, marketCapYi) {
@@ -4905,7 +4904,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
     fiveXModel: {
       title: "未来成长股发现系统",
       conclusion: "这页不再把五倍股理解成短线暴涨预测，而是用产业研究框架寻找未来1-3年可能被市场重估的公司。核心顺序是：先判断产业5年空间，再判断公司竞争力和财务拐点，最后才用技术资金决定买点。技术形态好但产业、财务、估值空间不足，不进入正式候选。",
-      sampleNote: "历史一年5倍股样本只用于理解“产业/业绩/资金如何共振”，不作为直接选股公式；科创和北证继续作为产业风向研究，但不进入你的可买候选。",
+      sampleNote: "历史一年5倍股样本用于校准技术资金10分、启动阶段和追高风险，不另设第二套相似度分数；科创和北证继续作为产业风向研究，但不进入你的可买候选。",
       scoringDimensions: [
         { dimension: "产业趋势", weight: 30, read: "看未来5年市场空间、国家战略、国产替代程度和全球竞争格局；S级赛道给最高权重。" },
         { dimension: "公司竞争力", weight: 20, read: "看全球/国内排名、技术壁垒、客户壁垒和国产替代价值；概念公司降权。" },
@@ -4916,7 +4915,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
       futureCandidateRules: [
         "当前市值小于1000亿，正式五倍潜力池优先50-500亿。",
         "所属产业必须A级以上，S级优先：AI算力基础设施、半导体国产替代/材料/设备、人形机器人、工业自动化、低空经济、高端制造。",
-        "综合评分必须大于85分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索。",
+        "五倍潜力指数必须不低于70分，未来空间必须大于3倍，且最近业绩或利润率出现改善线索；85分以上定义为高置信研究候选。",
         "必须能说清楚当前市场错误认知，不允许只写题材和K线。",
         "每只股票必须给出目标市值假设、未来催化、最大风险和失败信号。"
       ],
@@ -5003,7 +5002,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
         { dimension: "资金面", rule: "小中盘更容易走出高弹性，但必须有板块共振和龙头辨识度；机构趋势股则更看产业确定性。", use: "你的可买池优先主板、创业板，中小市值但基本面太弱的只观察。" }
       ],
       rules: [
-        "候选股低于6.5分不进池；5倍股相似度低于6.5时，只能普通观察。",
+        "唯一评分为五倍潜力指数100分制；低于70分不进入正式研究候选。",
         "优先找周线刚排队、成交额中枢抬升、近3个月涨幅20%-80%的票。",
         "有硬催化但股价仍在下降趋势，不买；股价强但没有消息/业绩验证，不重仓。",
         "科创板和北证继续作为风向研究，但不进入可买候选；创业板可以进入。",
@@ -5011,7 +5010,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
         "卖点看三类：天量长上影、跌破20日/10周趋势、核心催化证伪或价格周期见顶。"
       ],
       dailyIntegration: [
-        "每日候选增加5倍股相似度，和爬坡分一起看。",
+        "每日用历史样本共性校准周线启动、量能台阶、业绩拐点和高位透支风险，但不另设相似度分数。",
         "财报季把净利润/扣非同比100%以上、300%以上、扭亏且利润体量明显的公司加入重点扫描。",
         "美股、日韩涨幅榜若出现同一产业链集体上涨，用来寻找A股可买映射，不把单只海外异动当主线。",
         "如果市场资金从科技切到资源、医药、消费或金融，5倍股模型也要在新主线里重新筛，不固定科技。"
@@ -5401,7 +5400,7 @@ async function buildModelAnalysis(dashboard, session) {
 4. 早盘版指导上午，午间版指导下午，盘后版指导明天，周末版指导下周。
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
 6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
-7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。fiveXPotentialIndex低于85的股票不要建议买入，只能普通观察。
+7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。唯一评分是fiveXPotentialIndex 100分制：低于70不进正式候选，70-84为研究候选，85以上且估值、财务与历史启动共性全部通过后才可提出条件式买入建议。
 8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
