@@ -1,8 +1,10 @@
 name: Update A Stock Dashboard
 
 on:
-  # Website deployment is handled by Vercel on every GitHub push.
-  # Model/data refresh runs only once per day or when manually requested.
+  # Temporary: allow this one authorized refresh to start from a push.
+  push:
+    paths:
+      - ".github/workflows/update-dashboard.yml"
   schedule:
     - cron: "0 10 * * *"
   workflow_dispatch:
