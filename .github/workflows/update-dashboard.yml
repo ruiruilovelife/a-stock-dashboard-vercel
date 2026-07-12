@@ -1,18 +1,10 @@
 name: Update A Stock Dashboard
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "index.html"
-      - "package.json"
-      - "scripts/**"
-      - ".github/workflows/update-dashboard.yml"
+  # Website deployment is handled by Vercel on every GitHub push.
+  # Model/data refresh runs only once per day or when manually requested.
   schedule:
-    # Start at 18:00 Asia/Shanghai and retry the trigger through 19:45.
-    # The schedule gate allows only the first successful daily model update.
-    - cron: "0,15,30,45 10,11 * * *"
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 permissions:
