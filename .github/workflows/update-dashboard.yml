@@ -2,9 +2,13 @@ name: Update A Stock Dashboard
 
 on:
   # Website deployment is handled by Vercel on every GitHub push.
-  # Model/data refresh runs only once per day or when manually requested.
+  # Run several after-close checks so a delayed or missed GitHub schedule
+  # still has same-day fallback opportunities. schedule-gate.mjs prevents
+  # duplicate refreshes after a successful after-close update.
   schedule:
-    - cron: "0 10 * * *"
+    - cron: "40 9 * * *"   # 17:40 Asia/Shanghai
+    - cron: "20 10 * * *"  # 18:20 Asia/Shanghai
+    - cron: "0 12 * * *"   # 20:00 Asia/Shanghai fallback
   workflow_dispatch:
 
 permissions:
@@ -41,7 +45,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_DAILY_MODEL: gpt-5.6-terra
           OPENAI_DEEP_MODEL: gpt-5.6-terra
-          OPENAI_REASONING_EFFORT: high
+          OPENAI_REASONING_EFFORT: medium
           REQUIRE_MODEL_ANALYSIS: "true"
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: npm run update
