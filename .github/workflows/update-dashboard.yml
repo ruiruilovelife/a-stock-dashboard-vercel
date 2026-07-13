@@ -10,6 +10,9 @@ on:
     - cron: "20 10 * * *"  # 18:20 Asia/Shanghai
     - cron: "0 12 * * *"   # 20:00 Asia/Shanghai fallback
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/manual-refresh"
 
 permissions:
   contents: write
