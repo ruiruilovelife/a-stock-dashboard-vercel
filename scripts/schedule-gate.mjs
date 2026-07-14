@@ -77,4 +77,4 @@ if (output) {
   fs.appendFileSync(output, `should_run=${result.shouldRun ? "true" : "false"}\n`);
   fs.appendFileSync(output, `reason=${result.reason}\n`);
 }
-console.log(`schedule gate: ${result.shouldRun ? "run" : "skip"} (${result.reason})`);
+console.log(`schedule gate: ${result.shouldRun ? "run" : "skip"} (${result.reason}); event=${process.env.GITHUB_EVENT_NAME || "local"}`);
