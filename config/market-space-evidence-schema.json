@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "market-space-evidence/1.0.0",
+  "updatedAt": "2026-07-14",
+  "purpose": "长期市值研究的证据字段定义。所有数值必须来自可追溯的公司公告、年报、调研纪要或行业研究；缺项时禁止输出未来空间倍数。",
+  "required": [
+    "asOf",
+    "sources",
+    "tamYi",
+    "samYi",
+    "scenarios.neutral.companySharePct",
+    "scenarios.neutral.netMarginPct",
+    "scenarios.neutral.peerPe"
+  ],
+  "optionalConstraints": [
+    "capacityRevenueYi",
+    "orderSupportedRevenueYi",
+    "managementGuidanceRevenueYi",
+    "industryProfitPoolYi",
+    "capitalIntensity",
+    "roicPct"
+  ],
+  "rules": [
+    "SAM不得大于TAM；公司收入上限取市场份额、产能、订单及管理层指引中可验证约束的最小值。",
+    "目标净利率和估值倍数必须分别有依据；不得仅因产业标签自动赋值。",
+    "中性情景为默认展示；乐观情景不能参与默认排序。",
+    "行业容量、份额、利润率或同业估值缺失时，仅保留研究结论，未来目标市值显示待验证。"
+  ]
+}
