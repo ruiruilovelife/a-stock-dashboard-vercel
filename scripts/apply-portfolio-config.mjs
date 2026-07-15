@@ -15,7 +15,7 @@ const trackingBlock = `const TRADE_TRACKING_BASE = [\n${trackingLines}\n];`;
 
 source = source.replace(/const STOCKS = \[[\s\S]*?\];/, stocksBlock);
 source = source.replace(/const TRADE_TRACKING_BASE = \[[\s\S]*?\];/, trackingBlock);
-source = source.replace(/positionRatio: "\d+(?:\.\d+)?%"/g, `positionRatio: "${config.positionRatio}"`);
+source = source.replace(/positionRatio: "[^"]*"/g, `positionRatio: "${config.positionRatio}"`);
 
 fs.writeFileSync(target, source);
 console.log(`applied portfolio config: ${config.positionRatio}, ${config.holdings.length} holdings`);
