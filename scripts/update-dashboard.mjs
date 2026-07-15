@@ -646,7 +646,7 @@ const VALUE_RESEARCH_OVERRIDES = {
     moatLevel: 4,
     moat: "大尺寸硅片技术、客户验证和规模化制造形成较高进入壁垒。",
     catalysts: ["12英寸硅片稼动率提升", "国产晶圆厂扩产", "产品结构和良率改善"],
-    risk: "科创板当前不可交易；行业供给压力、稼动率不足或盈利改善慢于预期。"
+    risk: "行业供给压力、稼动率不足或盈利改善慢于预期。"
   },
   "002409": {
     industry: "半导体材料",
@@ -2666,10 +2666,7 @@ function isTrackableCandidate(c) {
 }
 
 function isBuyableAShareCode(code) {
-  const text = String(code || "");
-  if (/^(688|689)/.test(text)) return false;
-  if (/^[89]/.test(text)) return false;
-  return true;
+  return /^\d{6}$/.test(String(code || ""));
 }
 
 function buildCandidates(quotes, previous, weeklyProfiles, marketCaps) {
@@ -5192,7 +5189,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
     fiveXModel: {
       title: "未来成长股发现系统",
       conclusion: "这页不再把五倍股理解成短线暴涨预测，而是用产业研究框架寻找未来1-3年可能被市场重估的公司。核心顺序是：先判断产业5年空间，再判断公司竞争力和财务拐点，最后才用技术资金决定买点。技术形态好但产业、财务、估值空间不足，不进入正式候选。",
-      sampleNote: "历史一年5倍股样本用于校准技术资金10分、启动阶段和追高风险，不另设第二套相似度分数；科创和北证继续作为产业风向研究，但不进入你的可买候选。",
+      sampleNote: "历史一年5倍股样本用于校准技术资金10分、启动阶段和追高风险，不另设第二套相似度分数；科创板、北交所、主板和创业板统一纳入全市场研究、候选和交易建议。",
       scoringDimensions: [
         { dimension: "产业趋势", weight: 30, read: "看未来5年市场空间、国家战略、国产替代程度和全球竞争格局；S级赛道给最高权重。" },
         { dimension: "公司竞争力", weight: 20, read: "看全球/国内排名、技术壁垒、客户壁垒和国产替代价值；概念公司降权。" },
@@ -5293,7 +5290,7 @@ function buildMacroMap(indices, globalMarkets = [], internals = {}) {
         "唯一评分为五倍潜力指数100分制；低于70分不进入正式研究候选。",
         "优先找周线刚排队、成交额中枢抬升、近3个月涨幅20%-80%的票。",
         "有硬催化但股价仍在下降趋势，不买；股价强但没有消息/业绩验证，不重仓。",
-        "科创板和北证继续作为风向研究，但不进入可买候选；创业板可以进入。",
+        "科创板、北交所、主板和创业板统一纳入全市场扫描与可买候选。",
         "买点只看两类：平台突破后不跌回，或第一次回踩10日线/10周线不破。",
         "卖点看三类：天量长上影、跌破20日/10周趋势、核心催化证伪或价格周期见顶。"
       ],
@@ -5689,7 +5686,7 @@ async function buildModelAnalysis(dashboard, session) {
 5. 必须先判断市场阶段：熊市预警、弱势震荡、震荡市/结构轮动、结构性牛市、全面牛市观察。要说明这是全面行情还是结构性行情，并给出仓位上限、应该进攻还是防守。
 6. 五倍股/未来成长股必须按100分五维模型评价：产业趋势30、公司竞争力20、财务成长25、估值潜力15、技术资金10。技术资金只用于买点，不用于替代公司价值判断。
 7. 必须使用“未来成长股发现系统”辅助判断候选：市值50-500亿优先、产业未来5年空间至少3倍、公司行业前三或技术领先、利润未来3-5年可能5倍、市场关注度未完全打满。唯一评分是fiveXPotentialIndex 100分制：低于70不进正式候选，70-84为研究候选，85以上且估值、财务与历史启动共性全部通过后才可提出条件式买入建议。
-8. 用户暂时不能买科创板和北证，所以可买候选、买入建议和加仓建议不得给688/689开头科创板、8/9开头北证；但整体投研必须继续分析科创50、科创半导体设备/材料/创新药，把它们作为科技风险偏好和产业链映射风向，再映射到可买的主板/创业板标的。创业板300/301可以纳入可买候选。
+8. 科创板、北交所、主板和创业板均纳入全市场扫描、候选、交易建议与持仓分析。必须明确交易板块属性和流动性/波动风险，但不得仅因代码前缀剔除；同时继续分析科创50和北证50的风险偏好及产业链映射。
 9. 必须先判断全市场资金风格，不允许只看科技。比较科技成长、红利高股息、顺周期资源、消费医药、金融地产、出口链、军工低空。如果资金不在科技，要明确给出降科技仓、切换观察方向和触发条件。
 10. 估值质量必须按成长价值100分模型评价：估值安全25、成长潜力30、产业价值25、竞争壁垒15、技术位置5。技术只决定买点。必须使用valueTrapIndex识别低估陷阱，并结合targetMcapYi/upsideMultiple说明未来合理市值情景；不能因为PE/PB低或跌得多就建议买入。
 11. 财报季必须高亮A股业绩超预期公司：净利润/扣非同比100%以上重点列出，300%以上或扭亏且利润体量明显更靠前；必须解释为什么指标变好、是否低基数/一次性、下一期能否延续。
@@ -6174,7 +6171,7 @@ async function main() {
     scoreField: "fiveXPotentialIndex",
     statusPrefix: "5倍模型",
     dropBelowMin: false,
-    excludeCodes: ["002463", "688019", "688106", "688120", "688041", "688981", "688800", "688017", "688535", "688409", "688295", "688631", "688596", "688072", "688361", "688506", "688266"]
+    excludeCodes: []
   });
   const holdingHardEventResult = await fetchHoldingHardEvents(previous, dailyCandidates, fiveXIdeas, oversoldValueIdeas).catch(error => {
     console.warn(`holding hard events fallback: ${error.message}`);
@@ -6235,7 +6232,7 @@ async function main() {
       }));
   });
   const scanScopeText = marketWideSnapshot.length
-    ? `成长价值扫描：${marketWideSource}${marketWideSnapshot.length}只；${valueFinancialResult.source}覆盖${valueFinancialResult.covered}只；可操作池排除科创/北证`
+    ? `成长价值扫描：${marketWideSource}${marketWideSnapshot.length}只；${valueFinancialResult.source}覆盖${valueFinancialResult.covered}只；全市场含科创板与北交所`
     : hasPreviousFullMarketValue
       ? `估值质量扫描：本次全A行情源失败，暂沿用上一版全A结果；不把样本池冒充全市场`
       : "估值质量扫描：全A快照失败，本次仅有样本池，占位不作为强结论";
