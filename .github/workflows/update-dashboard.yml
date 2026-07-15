@@ -43,8 +43,38 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: npm run update
 
-      - name: Commit updated data
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: update dashboard data"
-          file_pattern: data/*.json
+      - name: Commit updated data safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/*.json
+
+          if git diff --cached --quiet; then
+            echo "No generated data changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: update dashboard data"
+
+          # Rebase generated data onto current main if a code update landed
+          # while this long-running research task was in progress.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git checkout --theirs -- data/
+              git add data/
+              GIT_EDITOR=true git rebase --continue
+            fi
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+
+            echo "Push attempt ${attempt} conflicted; retrying."
+            sleep 5
+          done
+
+          echo "Unable to push generated data after three attempts."
+          exit 1
