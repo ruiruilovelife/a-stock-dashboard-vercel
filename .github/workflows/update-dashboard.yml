@@ -49,6 +49,10 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Portfolio config is applied to the runtime script for this run only.
+          # Keep that temporary edit out of the rebase/commit worktree.
+          git restore --worktree scripts/update-dashboard.mjs
           git add data/*.json
 
           if git diff --cached --quiet; then
