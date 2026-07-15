@@ -1,14 +1,11 @@
 name: Update A Stock Dashboard
 
 on:
-  # Website deployment is handled by Vercel on every GitHub push.
-  # Run several after-close checks so a delayed or missed GitHub schedule
-  # still has same-day fallback opportunities. schedule-gate.mjs prevents
-  # duplicate refreshes after a successful after-close update.
+  # GitHub Actions cron uses UTC. These map to 16:00, 18:00 and 20:00 Asia/Shanghai.
   schedule:
-    - cron: "40 9 * * *"   # 17:40 Asia/Shanghai
-    - cron: "20 10 * * *"  # 18:20 Asia/Shanghai
-    - cron: "0 12 * * *"   # 20:00 Asia/Shanghai fallback
+    - cron: "0 8 * * *"   # 16:00 Asia/Shanghai
+    - cron: "0 10 * * *"  # 18:00 Asia/Shanghai
+    - cron: "0 12 * * *"  # 20:00 Asia/Shanghai
   workflow_dispatch:
   push:
     paths:
@@ -34,16 +31,10 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Schedule gate
-        id: schedule_gate
-        run: node scripts/schedule-gate.mjs
-
       - name: Apply portfolio config
-        if: steps.schedule_gate.outputs.should_run == 'true'
         run: node scripts/apply-portfolio-config.mjs
 
       - name: Update dashboard data
-        if: steps.schedule_gate.outputs.should_run == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_DAILY_MODEL: gpt-5.6-terra
@@ -54,7 +45,6 @@ jobs:
         run: npm run update
 
       - name: Commit updated data
-        if: steps.schedule_gate.outputs.should_run == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore: update dashboard data"
