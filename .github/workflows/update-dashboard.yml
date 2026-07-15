@@ -39,7 +39,7 @@ jobs:
           OPENAI_DAILY_MODEL: gpt-5.6-terra
           OPENAI_DEEP_MODEL: gpt-5.6-terra
           OPENAI_REASONING_EFFORT: medium
-          REQUIRE_MODEL_ANALYSIS: "false"
+          REQUIRE_MODEL_ANALYSIS: "true"
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
         run: npm run update
 
