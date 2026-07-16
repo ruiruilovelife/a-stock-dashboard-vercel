@@ -1,9 +1,9 @@
 name: Update A Stock Dashboard
 
 on:
-  # GitHub Actions cron uses UTC. These map to 08:00 and 18:00 China Standard Time (Asia/Shanghai, UTC+8).
+  # Official daily edition only: 18:00 China Standard Time (UTC+8).
+  # GitHub may queue a cron job late; the script rejects any non-evening run.
   schedule:
-    - cron: "0 0 * * *"   # 08:00 China time
     - cron: "0 10 * * *"  # 18:00 China time
   workflow_dispatch:
   push:
