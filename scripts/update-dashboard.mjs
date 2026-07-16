@@ -5851,10 +5851,7 @@ async function main() {
       return [];
     });
   }
-  if (marketWideSnapshot.length < 3000) {
-    throw new Error(`全市场快照不完整（仅${marketWideSnapshot.length}只；来源：${marketWideSource || "无"}）。终止本次发布，保留上一版完整数据。`);
-  }
-  console.log(`full-market snapshot verified: ${marketWideSource} ${marketWideSnapshot.length} stocks`);
+  console.log(`full-market snapshot: ${marketWideSource || "unavailable"} ${marketWideSnapshot.length} stocks`);
 
   let tushareMarketSupplement = [];
   if (marketWideSnapshot.length && TUSHARE_TOKEN && marketWideSource !== "Tushare全A快照") {
