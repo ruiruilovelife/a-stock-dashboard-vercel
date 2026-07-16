@@ -5398,6 +5398,13 @@ function chinaTimeParts(now = new Date()) {
 }
 
 function updateSession(now = new Date()) {
+  if (process.env.DASHBOARD_SESSION_OVERRIDE === "盘后复盘版") {
+    return {
+      name: "盘后复盘版",
+      target: "明天",
+      instruction: "盘后复盘用于指导明天交易，重点看全天资金、收盘结构、夜间海外风险和次日操作预案。"
+    };
+  }
   const { weekday, minutes } = chinaTimeParts(now);
   const weekend = weekday === "Sat" || weekday === "Sun";
   if (weekend) {
