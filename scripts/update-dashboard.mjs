@@ -5437,35 +5437,19 @@ function shouldRunScheduledUpdate(previous, session, now = new Date()) {
   const lastDate = lastUpdated.slice(0, 10);
   const lastSession = previous?.meta?.session || "";
   const updatedToday = lastDate === date;
-
-  const inRange = (start, end) => minutes >= start && minutes <= end;
-  const alreadyHas = (names) => updatedToday && names.includes(lastSession);
+  const isEvening = minutes >= 17 * 60 && minutes < 24 * 60;
+  const targetSession = weekend ? "周末复盘版" : "盘后复盘版";
   const hm = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
-  if (weekend) {
-    if (inRange(17 * 60, 18 * 60 + 30) && !alreadyHas(["周末复盘版"])) return { ok: true, reason: "weekend-evening" };
-    if (minutes > 18 * 60 + 30 && minutes < 23 * 60 && !alreadyHas(["周末复盘版"])) return { ok: true, reason: "weekend-catchup" };
-    return { ok: false, reason: `skip weekend heartbeat ${date} ${hm}; last=${lastDate || "-"} ${lastSession || "-"}` };
+  // Scheduled jobs are allowed only to publish the official evening edition.
+  // A delayed morning cron must never turn into a fabricated midday update.
+  if (!isEvening) {
+    return { ok: false, reason: `skip non-evening scheduled run ${date} ${hm}; official edition is evening only` };
   }
-
-  if (inRange(8 * 60 + 35, 9 * 60 + 30) && !alreadyHas(["早盘指导版", "午间复盘版", "盘后复盘版"])) {
-    return { ok: true, reason: "morning-window" };
+  if (updatedToday && lastSession === targetSession) {
+    return { ok: false, reason: `skip duplicate evening edition ${date} ${hm}` };
   }
-  if (inRange(12 * 60 + 20, 13 * 60 + 20) && !alreadyHas(["午间复盘版", "盘后复盘版"])) {
-    return { ok: true, reason: "midday-window" };
-  }
-  if (inRange(17 * 60, 18 * 60 + 30) && !alreadyHas(["盘后复盘版"])) {
-    return { ok: true, reason: "after-close-window" };
-  }
-
-  if (minutes > 13 * 60 + 20 && minutes < 17 * 60 && !alreadyHas(["午间复盘版", "盘后复盘版"])) {
-    return { ok: true, reason: "midday-catchup" };
-  }
-  if (minutes > 18 * 60 + 30 && minutes < 23 * 60 && !alreadyHas(["盘后复盘版"])) {
-    return { ok: true, reason: "after-close-catchup" };
-  }
-
-  return { ok: false, reason: `skip heartbeat ${date} ${hm}; current=${session.name}; last=${lastDate || "-"} ${lastSession || "-"}` };
+  return { ok: true, reason: weekend ? "weekend-evening-only" : "evening-only" };
 }
 
 function modelForSession(session) {
@@ -5867,6 +5851,11 @@ async function main() {
       return [];
     });
   }
+  if (marketWideSnapshot.length < 3000) {
+    throw new Error(`全市场快照不完整（仅${marketWideSnapshot.length}只；来源：${marketWideSource || "无"}）。终止本次发布，保留上一版完整数据。`);
+  }
+  console.log(`full-market snapshot verified: ${marketWideSource} ${marketWideSnapshot.length} stocks`);
+
   let tushareMarketSupplement = [];
   if (marketWideSnapshot.length && TUSHARE_TOKEN && marketWideSource !== "Tushare全A快照") {
     tushareMarketSupplement = await fetchTushareAStockSnapshot().catch(error => {
