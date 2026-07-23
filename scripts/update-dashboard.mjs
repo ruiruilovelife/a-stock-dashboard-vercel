@@ -10,6 +10,8 @@ import {
   buildUnifiedEvents
 } from "./lib/decision-engine.mjs";
 import { earningsGuidanceFromEvents } from "./lib/earnings-guidance.mjs";
+import { scoreCurrentValue, scoreFiveX, scoreShortTermElasticity } from "./lib/independent-models.mjs";
+import { buildCycleModel, buildProfitBridge } from "./lib/profit-cycle-engine.mjs";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_DAILY_MODEL = process.env.OPENAI_DAILY_MODEL || "gpt-5.6-sol";
@@ -2812,12 +2814,14 @@ function elasticityStartupPhase(weekly) {
   if (!weekly) return "数据待确认";
   const quarter = Number(weekly.quarterReturn);
   const year = Number(weekly.yearReturn);
-  if (year > 200 || quarter > 90) return "高位风险";
-  if (quarter > 60 || year > 150) return "加速期";
-  if (weekly.weeklyTrendPass && quarter >= 15 && quarter <= 60) return "主升初期";
-  if (weekly.closeAbove20w && weekly.ma20Rising && quarter >= 0 && quarter <= 45) return "爬坡期";
-  if (weekly.longConsolidation && quarter > -15 && quarter < 20) return "底部";
-  return "底部";
+  if ((!weekly.closeAbove20w && quarter < -15) || (weekly.closeAbove20w === false && weekly.ma20Rising === false)) return "退潮破位";
+  if (year > 200 || quarter > 90) return "高位震荡";
+  if (quarter > 60 || year > 150) return "主升加速";
+  if (weekly.weeklyTrendPass && weekly.longConsolidation) return "突破后平台整理";
+  if (weekly.weeklyTrendPass && weekly.volumeStairPass && quarter >= 15 && quarter <= 60) return "主升前爬坡";
+  if (weekly.weeklyTrendPass && weekly.volumeStairPass) return "首次放量突破";
+  if (weekly.longConsolidation && quarter > -15 && quarter < 20) return "底部构筑";
+  return "长期下跌";
 }
 
 function elasticityTrendScore(weekly, phase) {
@@ -2829,11 +2833,26 @@ function elasticityTrendScore(weekly, phase) {
   if (weekly.ma60Rising) score += 3;
   if (weekly.maQueue) score += 5;
   if (weekly.longConsolidation) score += 4;
-  if (phase === "爬坡期" || phase === "主升初期") score += 4;
-  else if (phase === "底部") score += 2;
-  if (phase === "加速期") score -= 7;
-  if (phase === "高位风险") score -= 15;
+  if (["首次放量突破", "突破后平台整理", "主升前爬坡"].includes(phase)) score += 5;
+  else if (phase === "底部构筑") score += 2;
+  if (phase === "主升加速") score -= 7;
+  if (["高位震荡", "退潮破位"].includes(phase)) score -= 15;
   return Number(clampScore(score, 0, 30).toFixed(1));
+}
+
+function elasticityExpectationGap(earnings = null, override = null) {
+  const row = earnings?.forecastRow || earnings?.expressRow || null;
+  const change = Number(row?.p_change_min ?? row?.p_change_max ?? row?.profit_yoy ?? row?.yoy_net_profit);
+  if (row) {
+    return {
+      evidenceMissing: false,
+      pricedIn: false,
+      score: Number.isFinite(change) && change >= 50 ? 8 : Number.isFinite(change) && change >= 20 ? 5 : 3,
+      status: Number.isFinite(change) ? `业绩事件同比${change.toFixed(0)}%，等待持续兑现` : "存在业绩事件，幅度待核验"
+    };
+  }
+  if (override?.catalysts?.length) return { evidenceMissing: false, pricedIn: false, score: 4, status: `公司催化待兑现：${override.catalysts.slice(0, 2).join("、")}` };
+  return { evidenceMissing: true, pricedIn: false, score: 0, status: "未捕捉到新增订单、业绩、产品或政策预期差" };
 }
 
 function elasticityFundsScore(row, weekly) {
@@ -2899,7 +2918,8 @@ function elasticityFailureReasons({ weekly, phase, industry, growth, fundsScore,
   if (!weekly?.weeklyTrendPass) reasons.push("周线未确认");
   if (Number(growth.latestProfitGrowth ?? growth.profitCagr3Y) < 15) reasons.push("业绩兑现不足");
   if (Number(moatScore) < 4) reasons.push("竞争壁垒证据不足");
-  if (phase === "加速期" || phase === "高位风险") reasons.push("位置过高，追涨风险大");
+  if (phase === "主升加速" || phase === "高位震荡") reasons.push("位置过高，追涨风险大");
+  if (phase === "退潮破位") reasons.push("趋势破位，进入退潮风险");
   return reasons.length ? reasons : ["产业催化、资金持续性或下一期业绩任一不及预期"];
 }
 
@@ -2924,7 +2944,7 @@ function elasticityPrefilter(snapshot, financialByCode) {
     .slice(0, 72);
 }
 
-async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) {
+async function buildMarketWideCandidates(snapshot, financialByCode = new Map(), expectationByCode = new Map()) {
   const prefiltered = elasticityPrefilter(snapshot, financialByCode);
   const weeklyPool = prefiltered.map(({ row }) => [symbolFromCode(row.code), row.name, row.code]);
   const weeklyProfiles = await fetchWeeklyProfiles(weeklyPool);
@@ -2936,7 +2956,25 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
     const override = valueResearchOverride(row.code);
     const industryScore = elasticityIndustryScore(industry, growth, override);
     const moatScore = elasticityMoatScore(financial, override);
-    const elasticityScore = Number(clampScore(trendScore + fundsScore + industryScore + moatScore, 0, 100).toFixed(1));
+    const expectation = elasticityExpectationGap(expectationByCode.get(row.code), override);
+    const distributionRisk = phase === "高位震荡" || (Number(weekly?.quarterReturn) > 80 && !weekly?.noBlowoffPass);
+    const breakdownRisk = phase === "退潮破位";
+    const scoredModel = scoreShortTermElasticity({
+      trendStartScore: trendScore,
+      capitalEntryScore: fundsScore,
+      industryCatalystScore: Number(clampScore(industryScore + expectation.score, 0, 30).toFixed(1)),
+      competitiveMoatScore: moatScore,
+      phase,
+      phaseConfidence: weekly ? (weekly.weeklyTrendPass ? "中" : "低") : "低",
+      confirmation: weekly?.weeklyTrendPass ? "周线趋势已确认，等待新增预期兑现" : "周线趋势未确认",
+      support: weekly?.ma20 ?? null,
+      resistance: weekly?.high52 ?? null,
+      expectationEvidenceMissing: expectation.evidenceMissing,
+      catalystPricedIn: expectation.pricedIn,
+      distributionRisk,
+      breakdownRisk
+    });
+    const elasticityScore = scoredModel.score;
     const type = elasticityCandidateType(industry, row);
     const catalyst = valueCatalyst(row, override, industry);
     const failureReasons = elasticityFailureReasons({ weekly, phase, industry, growth, fundsScore, moatScore });
@@ -2951,10 +2989,10 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
       climbScore: elasticityScore,
       trendStartupScore: trendScore,
       capitalEntryScore: fundsScore,
-      industryCatalystScore: industryScore,
+      industryCatalystScore: scoredModel.components.industryCatalyst,
       moatScore,
       capitalStrength: Number((fundsScore / 3).toFixed(1)),
-      mainRiseProbability: elasticityProbabilityStars(elasticityScore, trendScore, fundsScore, industryScore),
+      mainRiseProbability: elasticityProbabilityStars(elasticityScore, trendScore, fundsScore, scoredModel.components.industryCatalyst),
       industryTier: industry.tier,
       industryLabel: industry.label,
       industryCatalyst: catalyst,
@@ -2962,7 +3000,14 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
       currentMcapYi: row.marketCapYi,
       marketCapYi: row.marketCapYi,
       failureReasons,
-      risk: failureReasons.join("；"),
+      elasticityVetoes: scoredModel.vetoes,
+      elasticityPassed: scoredModel.passed,
+      catalystStatus: expectation.status,
+      stageConfidence: scoredModel.phaseConfidence,
+      stageConfirmation: scoredModel.confirmation,
+      support: scoredModel.support,
+      resistance: scoredModel.resistance,
+      risk: [...scoredModel.vetoes, ...failureReasons].join("；"),
       financialEdge: `营收3年CAGR ${growth.revenueCagr3Y ?? "待确认"}%；利润3年CAGR ${growth.profitCagr3Y ?? "待确认"}%；最新利润增速 ${growth.latestProfitGrowth ?? "待确认"}%`,
       quarterReturn: weekly?.quarterReturn ?? null,
       yearReturn: weekly?.yearReturn ?? null,
@@ -2985,18 +3030,18 @@ async function buildMarketWideCandidates(snapshot, financialByCode = new Map()) 
       peTtm: row.peTtm,
       pb: row.pb,
       close: row.close,
-      buyPoint: phase === "主升初期"
+      buyPoint: phase === "首次放量突破"
         ? "平台突破后的第一次缩量回踩，或放量突破但单日涨幅不超过5%时分批验证。"
         : "等待20周线之上缩量回踩不破，随后成交额再次温和放大。",
       selectionReason: "全A预筛后补取周线历史；由趋势启动、连续资金、产业催化和竞争壁垒共同评分，市值不参与评分。",
-      modelVersion: "主升启动模型30/30/30/10"
+      modelVersion: "近期强弹性模型：趋势启动30 / 资金进入30 / 产业催化30 / 竞争壁垒10"
     };
   });
   const typePriority = { "产业趋势型": 3, "周期反转型": 2, "资金驱动型": 1 };
   return scored
-    .filter(item => item.elasticityScore >= 65)
+    .filter(item => item.elasticityPassed)
     .filter(item => Number(item.marketCapYi) <= 500 || item.elasticityScore >= 80)
-    .filter(item => item.phase === "爬坡期" || item.phase === "主升初期")
+    .filter(item => ["首次放量突破", "突破后平台整理", "主升前爬坡"].includes(item.phase))
     .filter(item => !Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
     .sort((a, b) => (typePriority[b.type] - typePriority[a.type]) || b.elasticityScore - a.elasticityScore || b.mainRiseProbability - a.mainRiseProbability)
     .slice(0, 5);
@@ -3048,11 +3093,12 @@ function buildTrackedCandidates(previous, dailyCandidates, allCandidateQuotes) {
     if (!item.code) continue;
     const score = Number(item.elasticityScore ?? item.climbScore ?? item.score);
     const stillQualified = isBuyableAShareCode(item.code)
-      && item.modelVersion === "主升启动模型30/30/30/10"
+      && item.modelVersion === "近期强弹性模型：趋势启动30 / 资金进入30 / 产业催化30 / 竞争壁垒10"
       && Number.isFinite(score)
       && score >= 65
       && (!Number.isFinite(Number(item.yearReturn)) || Number(item.yearReturn) <= 200)
-      && (item.phase === "爬坡期" || item.phase === "主升初期");
+      && ["首次放量突破", "突破后平台整理", "主升前爬坡"].includes(item.phase)
+      && !(item.elasticityVetoes || []).length;
     const last = item.lastSelectedDate || item.firstTrackedDate || today;
     if ((stillQualified && daysBetween(last, today) <= 30) || dailyByCode.has(item.code)) {
       const sanitized = { ...item };
@@ -3450,7 +3496,31 @@ async function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCa
     const futureProfit5xPotential = Boolean(upsideMultiple && upsideMultiple >= 3) && Number(item.financial?.profit || 0) >= 4;
     const lowAttention = item.attention === "低" || item.attention === "中低" || item.attention === "中";
     const techScore = technicalFundsScore(item, marketRow, daily, historicalPattern);
-    const totalScore = Number((industryScore + moatScore + growthScore + valuationScore + techScore).toFixed(1));
+    const capacity = research?.valuation?.marketCapacity || research?.valuation?.capacity || {};
+    const neutralCapacityScenario = capacity.scenarios?.neutral || capacity.neutral || {};
+    const fiveXResult = scoreFiveX({
+      industryProfitPoolScore: Math.min(20, industryScore / 30 * 20),
+      moatScore: Math.min(20, moatScore / 20 * 20),
+      shareGainScore: capacity.valid ? 15 : 0,
+      profitCagrScore: Math.min(15, growthScore / 25 * 15),
+      cashFlowModelScore: Number(item.financial?.ocfToProfit) >= 80 ? 10 : Number(item.financial?.ocfToProfit) >= 60 ? 6 : 0,
+      governanceScore: Number(override?.governanceScore ?? research?.governanceScore) || 0,
+      valuationFeasibilityScore: capacity.valid ? 10 : 0,
+      currentMcapYi: marketCapYi,
+      targetPe: neutralCapacityScenario.peerPe ?? capacity.peerPe,
+      maxReasonablePe: neutralCapacityScenario.peerPe ?? capacity.peerPe,
+      targetNetMarginPct: neutralCapacityScenario.netMarginPct ?? capacity.netMarginPct,
+      samYi: capacity.samYi,
+      maxAchievableSharePct: neutralCapacityScenario.companySharePct ?? capacity.companySharePct,
+      capacityRevenueYi: capacity.capacityRevenueYi,
+      industryProfitPoolYi: capacity.industryProfitPoolYi,
+      newBusinessStage: override?.newBusinessStage,
+      cycleOnly: Boolean(override?.cycleOnly),
+      nonRecurringProfitDominant: Boolean(override?.nonRecurringProfitDominant),
+      severeDilution: Boolean(override?.severeDilution),
+      governanceRisk: Boolean(override?.governanceRisk)
+    });
+    const totalScore = fiveXResult.score;
     const isBuyable = isBuyableAShareCode(item.code);
     const phase = totalScore >= 90
       ? "未来赢家重点池"
@@ -3500,7 +3570,11 @@ async function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCa
       historicalPatternRisk: historicalPattern.risk,
       growthResearchEligible: true,
       valuationPending: !valuationReady,
-      recommendationEligible: valuationReady && Number(upsideMultiple) >= 3 && totalScore >= 70,
+      recommendationEligible: fiveXResult.passed,
+      fiveXMath: fiveXResult.math,
+      fiveXVetoes: fiveXResult.vetoes,
+      fiveXPassed: fiveXResult.passed,
+      fiveXComponents: fiveXResult.components,
       coreLogic: why,
       futureCatalysts: item.catalysts.join("；"),
       risk: item.risks.join("；"),
@@ -3525,10 +3599,7 @@ async function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCa
     .filter(item => item.buyable)
     .filter(item => Number(item.marketCapYi ?? item.currentMcapYi) < 1000)
     .filter(item => item.tier === "S" || item.tier === "A")
-    .filter(item => item.totalScore >= 70)
-    .filter(item => Number(item.upsideMultiple) >= 3)
-    .filter(item => item.performanceImproving)
-    .filter(item => item.historicalPatternEligible)
+    .filter(item => item.fiveXPassed)
     .slice(0, 20);
 
   const davisDoubleCandidates = all
@@ -3564,10 +3635,7 @@ function isFiveXPoolEligible(item) {
     return marketCap >= 50
       && marketCap <= 500
       && (item.tier === "S" || item.tier === "A")
-      && Number(item.upsideMultiple) >= 3
-      && item.performanceImproving
-      && item.historicalPatternEligible !== false
-      && Number(item.fiveXPotentialIndex) >= 70;
+      && item.fiveXPassed;
   }
   return false;
 }
@@ -4023,6 +4091,15 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
       const technicalScore = valueTechnicalEntryScore(row);
       const trap = valueTrapDetection(valuation, growth, financial, industry);
       const currentValue = currentUndervaluationAssessment(valuation, growth, financial, industry, trap);
+      const isCyclical = /化工|有色|资源|航运|面板|光伏|锂电|存储|煤炭|钢铁|石油/.test(`${industry.label} ${industry.chain}`);
+      const profitBridge = buildProfitBridge({ isCyclical });
+      const cycleModel = buildCycleModel({
+        reportedProfitYi: Number(financial.latestProfitYi) > 0
+          ? Number(financial.latestProfitYi)
+          : Number(valuation.pe) > 0 ? Number(row.marketCapYi) / Number(valuation.pe) : null,
+        currentMcapYi: row.marketCapYi,
+        cyclePosition: currentValue.cyclicalPeakRisk ? "peak" : isCyclical ? "normal" : "not_applicable"
+      });
       const futureSpace = unifiedResearch?.valuation?.rankingEligible
         ? {
             targetMcapYi: unifiedResearch.valuation.strategicProbabilityWeighted?.marketCapYi ?? null,
@@ -4030,8 +4107,23 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
             method: unifiedResearch.valuation.explanation
           }
         : { targetMcapYi: null, upsideMultiple: null, method: unifiedResearch?.valuation?.explanation || "统一估值未通过" };
-      const compositeScore = Number(clampScore(valuation.score + growth.score + industry.score + moat.score + technicalScore, 0, 100).toFixed(1));
-      const investmentStatus = currentValue.status;
+      const valueResult = scoreCurrentValue({
+        normalizedEarningsScore: cycleModel.normalizedProfitYi !== null ? valuation.score : 0,
+        cashFlowScore: Number(financial.ocfToProfit) >= 100 ? 15 : Number(financial.ocfToProfit) >= 80 ? 11 : Number(financial.ocfToProfit) >= 60 ? 7 : 0,
+        assetValueScore: Number(valuation.pb) > 0 && Number(valuation.pb) <= 1 ? 15 : Number(valuation.pb) <= 1.5 ? 10 : Number(valuation.pb) <= 2 ? 6 : 0,
+        cyclePositionScore: currentValue.cyclicalPeakRisk ? 0 : isCyclical ? 6 : 15,
+        balanceSheetCapexScore: Number(financial.debtToAssets) > 0 && Number(financial.debtToAssets) <= 40 ? 10 : Number(financial.debtToAssets) <= 60 ? 6 : 0,
+        shareholderReturnScore: Number(financial.dividendYieldPct ?? financial.dividendYield) >= 4 ? 10 : Number(financial.dividendYieldPct ?? financial.dividendYield) >= 2 ? 6 : 0,
+        reratingCatalystScore: override?.catalysts?.length ? 10 : 0,
+        normalizedProfitYi: cycleModel.normalizedProfitYi,
+        currentMcapYi: row.marketCapYi,
+        cyclePeak: currentValue.cyclicalPeakRisk,
+        cashFlowWeak: Number(financial.ocfToProfit) > 0 && Number(financial.ocfToProfit) < 60,
+        receivablesOrInventoryAbnormal: Boolean(financial.receivablesOrInventoryAbnormal),
+        qualityRisk: trap.risk === "高"
+      });
+      const compositeScore = valueResult.score;
+      const investmentStatus = valueResult.classification;
       const phase = trap.risk === "高"
         ? "先排除价值陷阱"
         : compositeScore >= 82 && growth.score >= 20 && industry.score >= 20
@@ -4059,6 +4151,11 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         technicalScore,
         valuation,
         currentValue,
+        profitBridge,
+        cycleModel,
+        valueComponents: valueResult.components,
+        valueVetoes: valueResult.vetoes,
+        valuePassed: valueResult.passed,
         currentValuationValid: currentValue.valid,
         currentLowScore: currentValue.score,
         currentLowComponents: currentValue.components,
@@ -4075,7 +4172,7 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
         valuationRankingEligible: Boolean(unifiedResearch?.valuation?.rankingEligible),
         futureValuationStatus: unifiedResearch?.valuation?.rankingEligible ? "未来估值可用" : "未来估值待补",
         growthRankingEligible: growth.score >= 18 || industry.score >= 20,
-        recommendationEligible: currentValue.valid && trap.risk !== "高" && !currentValue.cyclicalPeakRisk,
+        recommendationEligible: valueResult.passed,
         valuationInvalidReasons: unifiedResearch?.valuation?.invalidReasons || [],
         valuationWarnings: unifiedResearch?.valuation?.warnings || [],
         valuationMethod: unifiedResearch?.valuation?.method || null,
@@ -4121,9 +4218,8 @@ function buildMarketWideValueResearch(snapshot, previous, financialByCode = new 
     });
 
   const ideas = all
-    .filter(item => item.compositeScore >= 55 || item.growthScore >= 18 || item.industryScore >= 20)
-    .filter(item => item.valueTrapRisk !== "高")
-    .sort((a, b) => b.compositeScore - a.compositeScore || b.growthScore - a.growthScore || b.industryScore - a.industryScore)
+    .filter(item => item.valuePassed)
+    .sort((a, b) => b.compositeScore - a.compositeScore || b.currentLowScore - a.currentLowScore)
     .slice(0, 60);
   const traps = all
     .filter(item => item.valuationScore >= 14 && item.valueTrapRisk !== "低")
@@ -6099,8 +6195,9 @@ async function main() {
   const hasPreviousFullMarketValue = /全A快照/.test(previous.meta?.scanScope || "")
     && Array.isArray(previous.oversoldValueIdeas)
     && previous.oversoldValueIdeas.length;
+  const expectationByCode = new Map([...tushareEarningsResult.byCode.entries()].map(([code, item]) => [code, item]));
   const dailyCandidates = marketWideSnapshot.length
-    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode)
+    ? await buildMarketWideCandidates(marketWideSnapshot, valueFinancialResult.byCode, expectationByCode)
     : hasPreviousFullMarketCandidates
       ? previous.candidates
       : buildCandidates(candidateQuotes, previous, candidateWeeklyProfiles, candidateMarketCaps);

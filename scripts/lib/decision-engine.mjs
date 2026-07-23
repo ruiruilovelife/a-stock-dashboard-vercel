@@ -121,6 +121,8 @@ function actionForHolding(holding, research, hardEvents = []) {
   }
   addTriggers.push("回踩20日均线或关键支撑且缩量", "板块趋势继续增强", "财报、订单或新业务兑现超预期", "统一估值仍有安全边际");
   reduceTriggers.push("跌破关键支撑并放量", "行业景气或资金趋势转弱", "财报低于预期", "新业务兑现不及预期", "进入乐观估值区间", "持仓集中度继续升高");
+  const accountReturn = numeric(holding.accountReturnPct);
+  const holderState = accountReturn === null ? "当前持有" : accountReturn >= 0 ? "盈利持有" : "亏损持有";
   return {
     code: holding.code,
     name: holding.name,
@@ -128,6 +130,13 @@ function actionForHolding(holding, research, hardEvents = []) {
     priority,
     reasons,
     valuationDistance: distance,
+    holderState,
+    pricedExpectation: research?.valuation?.explanation || "市场已计价程度需要以估值、业绩预期和资金拥挤共同确认",
+    newEvidenceNeeded: "新增订单、业绩超预期、毛利率/现金流改善或产业供需变化",
+    forUnheld: "只在新增证据出现且趋势确认后分批验证，不因故事直接追入。",
+    forWinningHolder: "趋势未破且新证据持续时持有；进入拥挤或乐观区间后分批锁定。",
+    forLosingHolder: "先检查逻辑与失效条件；失效即降级，不用摊平替代研究。",
+    invalidationCondition: "核心订单/业绩低于预期、产业景气反转或跌破关键趋势且无新证据修复。",
     valuationMethod: research?.valuation?.method || null,
     valuationConfidence: research?.valuation?.confidence || "低",
     technicalTrend: pct > 2 ? "短线增强，仍需周线确认" : pct < -2 ? "短线转弱" : "震荡待确认",
@@ -385,6 +394,9 @@ function buildFundingStructure(internals = {}, indices = []) {
       crowding: item.amountShare >= 8 ? "偏拥挤" : "正常",
       catalystStrength: "待事件层确认",
       migrationType: item.upRatio >= 60 && item.avgPct > 0 ? "中期资金迁移候选" : item.avgPct > 0 ? "短期事件驱动/反弹" : "资金流出或防御切换"
+      ,marketState: item.upRatio >= 60 && item.avgPct > 0 ? "价格与广度共振" : "仅价格或广度局部改善"
+      ,accumulationOrDistribution: "样本覆盖成交与涨跌广度，未接入逐笔主动资金，不判定主力吸筹/派发"
+      ,evidenceBoundary: "仅反映已覆盖股票的成交额占比、涨跌与广度；不等同全市场净流入"
     }))
   };
 }

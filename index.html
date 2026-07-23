@@ -376,14 +376,14 @@
 
       if (id === "actions") {
         return `${timeLine}<div class="section card notice dense"><h2>组合层面建议</h2><p><b>集中度风险：</b>${advice.portfolio?.concentrationRisk || "待确认"}；${advice.portfolio?.sharedRisk || ""}</p><p><b>优先加仓：</b>${advice.portfolio?.preferredAdd || "暂无"}　<b>优先减仓：</b>${advice.portfolio?.preferredReduce || "暂无"}　<b>资金来源：</b>${advice.portfolio?.fundingSource || "现金"}</p><p>${advice.portfolio?.rule || "动作由统一公司研究快照生成。"}</p></div>
-          <div class="section card dense"><h2>最新持仓操作表</h2><table><thead><tr><th>股票/动作</th><th>发展型估值</th><th>趋势/量能/板块</th><th>公告与业务兑现</th><th>加仓触发</th><th>减仓触发</th><th>有效期/置信度</th></tr></thead><tbody>${(advice.items || []).map(x => `<tr><td><b>${x.name}</b><br>${x.action} · ${x.priority}<br><span class="muted">${x.portfolioRole}</span></td><td>现价${x.valuationDistance?.currentPrice ?? "-"}<br>${x.valuationDistance?.actionEligible ? `12个月中性${x.valuationDistance.neutralTargetPrice ?? "-"}<br>三年中性${x.valuationDistance.strategicNeutralTargetPrice ?? "-"} / 乐观${x.valuationDistance.strategicOptimisticTargetPrice ?? "-"}` : `<b>暂不估值</b><br><span class="muted">${x.valuationDistance?.note || "未来盈利基数待确认"}</span>`}</td><td>${x.technicalTrend}<br>${x.volumeChange}<br>${x.sectorTrend}</td><td>${x.latestEvent?.title || "未自动确认新增硬事件"}<br>${x.businessRealization}</td><td>${(x.addTriggers || []).join("；")}</td><td>${(x.reduceTriggers || []).join("；")}</td><td>${x.validFor}<br>${x.generatedAt || "-"}<br>置信度${x.confidence}</td></tr>`).join("") || `<tr><td colspan="7">最新持仓尚未进入统一建议引擎。</td></tr>`}</tbody></table></div>`;
+          <div class="section card dense"><h2>最新持仓操作表</h2><table><thead><tr><th>股票/持有状态</th><th>当前判断</th><th>已计价预期/需新增证据</th><th>空仓、盈利与亏损持有</th><th>加仓/减仓触发</th><th>逻辑失效条件</th><th>有效期/置信度</th></tr></thead><tbody>${(advice.items || []).map(x => `<tr><td><b>${x.name}</b><br>${x.action} · ${x.priority}<br><span class="muted">${x.holderState || x.portfolioRole}</span></td><td>${x.technicalTrend}<br>${x.volumeChange}<br>${x.sectorTrend}<br><span class="muted">${x.latestEvent?.title || "未确认新增硬事件"}</span></td><td><b>已计价：</b>${x.pricedExpectation || "待验证"}<br><b>新证据：</b>${x.newEvidenceNeeded || "下一份财报、订单或公告验证"}</td><td><b>空仓：</b>${x.forUnheld || "等待触发"}<br><b>盈利持有：</b>${x.forWinningHolder || "按趋势与兑现管理"}<br><b>亏损持有：</b>${x.forLosingHolder || "先核验逻辑"}</td><td><b>加：</b>${(x.addTriggers || []).join("；")}<br><b>减：</b>${(x.reduceTriggers || []).join("；")}</td><td>${x.invalidationCondition || "跌破关键趋势且基本面/催化未兑现时重估"}</td><td>${x.validFor}<br>${x.generatedAt || "-"}<br>置信度${x.confidence}</td></tr>`).join("") || `<tr><td colspan="7">最新持仓尚未进入统一建议引擎。</td></tr>`}</tbody></table></div>`;
       }
 
       if (id === "funds") {
         const b = funding.marketBreadth || {};
         return `${timeLine}<div class="grid">${card("上涨/下跌", `<div class="num">${b.upCount ?? "-"} / ${b.downCount ?? "-"}</div>`)}${card("涨停/跌停", `<div class="num">${b.limitUp ?? "-"} / ${b.limitDown ?? "-"}</div>`)}${card("涨跌中位数", `<div class="num ${pctClass(b.medianPct)}">${fmtPct(b.medianPct)}</div>`)}${card("情绪周期", `<div class="num">${funding.emotionCycle || "数据不足"}</div>`)}</div>
           <div class="section card dense"><h2>判断依据</h2><p>${funding.emotionBasis || "全A数据不足。"}</p><table><thead><tr><th>指数风格</th><th>当日涨跌</th><th>中期趋势</th></tr></thead><tbody>${(funding.indexStyle || []).map(x => `<tr><td>${x.name}</td><td class="${pctClass(x.pct)}">${fmtPct(x.pct)}</td><td>${x.trend}</td></tr>`).join("")}</tbody></table></div>
-          <div class="section card dense"><h2>资金迁移矩阵</h2><table><thead><tr><th>行业</th><th>资金强度</th><th>价格趋势</th><th>拥挤度</th><th>催化</th><th>类型</th></tr></thead><tbody>${(funding.migrationMatrix || []).map(x => `<tr><td><b>${x.industry}</b></td><td>${x.capitalStrength ?? "-"}</td><td>${x.priceTrend}</td><td>${x.crowding}</td><td>${x.catalystStrength}</td><td>${x.migrationType}</td></tr>`).join("")}</tbody></table></div>
+          <div class="section card dense"><h2>资金迁移矩阵</h2><p class="muted">资金判断只在覆盖到成交、资金流或龙虎榜等证据时成立；没有硬数据时明确标示，不以单日涨跌冒充资金流向。</p><table><thead><tr><th>行业</th><th>资金强度</th><th>价格趋势</th><th>吸筹/派发判断</th><th>催化</th><th>证据边界</th></tr></thead><tbody>${(funding.migrationMatrix || []).map(x => `<tr><td><b>${x.industry}</b></td><td>${x.capitalStrength ?? "待确认"}</td><td>${x.priceTrend}</td><td>${x.accumulationOrDistribution || "证据不足，不判断"}</td><td>${x.catalystStrength}</td><td>${x.evidenceBoundary || "覆盖范围待确认"}</td></tr>`).join("")}</tbody></table></div>
           <div class="section card risk dense"><h2>尚未接入的硬指标</h2><p>${(funding.unavailableMetrics || []).join("、")}</p><p>${funding.unavailableReason || "不使用推测值。"}</p></div>`;
       }
 
@@ -794,7 +794,7 @@
             <h2>AI主升启动雷达</h2>
             <p>目标是发现未来1-3个月可能进入主升浪的股票，不把“今天涨得好”当成核心依据。评分只看四件事：趋势刚启动、资金连续进入、产业催化可持续、公司具备竞争壁垒。</p>
             <p><b>本次扫描：</b>${state.meta?.candidateScanScope || "等待全市场候选扫描结果"}。</p>
-            <p><b>模型权重：</b>趋势启动30分 + 资金进入30分 + 产业催化30分 + 竞争壁垒10分。市值不参与评分，但设置30亿-800亿元准入区间；500亿以上需总分达到80分。爬坡期、主升初期优先，加速期和高位风险降级。</p>
+            <p><b>模型权重：</b>趋势启动30分 + 资金进入30分 + 产业催化30分 + 竞争壁垒10分。市值不参与评分，只作准入过滤；优先“首次放量突破、突破后平台整理、主升前爬坡”，加速期、高位震荡和退潮破位直接降级。</p>
             <p><b>类型排序：</b>产业趋势型 &gt; 周期反转型 &gt; 资金驱动型。资金强度主要采用连续数周成交额台阶、上涨放量/回调缩量和非天量见顶代理；没有可靠大单净流入数据时明确不编造。</p>
             <p><b>跟踪规则：</b>从入选日开始计算累计涨跌；30 天内如果再次入选，会延长跟踪周期；超过 30 天没有再次入选，就从跟踪池移除。</p>
             <p><b>宏观过滤：</b>${macro.summary || "候选股必须结合海外科技、亚洲半导体、汇率和政策环境判断。"}</p>
@@ -809,18 +809,18 @@
               ${candidates.map((c, i) => `<tr>
                 <td>${i + 1}</td>
                 <td><b>${c.name}</b><br><span class="muted">${c.code || ""}</span><br><span class="muted">${c.theme || "-"}</span></td>
-                <td><b>${c.phase || "待确认"}</b><br><span class="muted">3个月 ${fmtPct(c.quarterReturn)}；1年 ${fmtPct(c.yearReturn)}</span><br><span class="muted">20/60周线：${c.closeAbove20w ? "上" : "下"}/${c.closeAbove60w ? "上" : "下"}；长期整理：${c.longConsolidation ? "是" : "否"}</span></td>
+                <td><b>${c.phase || "待确认"}</b><br><span class="muted">置信度：${c.stageConfidence ?? "待确认"}；确认：${c.stageConfirmation || "等待确认"}</span><br><span class="muted">支撑/压力：${c.support ?? "待确认"} / ${c.resistance ?? "待确认"}</span><br><span class="muted">3个月 ${fmtPct(c.quarterReturn)}；1年 ${fmtPct(c.yearReturn)}</span></td>
                 <td><b>${c.elasticityScore ?? c.score ?? "-"}/100</b><br><span class="muted">趋势 ${c.trendStartupScore ?? "-"}/30<br>资金 ${c.capitalEntryScore ?? "-"}/30<br>产业 ${c.industryCatalystScore ?? "-"}/30<br>壁垒 ${c.moatScore ?? "-"}/10</span></td>
                 <td><b>${c.capitalStrength ?? "-"}/10</b><br><span class="muted">量能台阶：${c.volumeStairPass ? "确认" : "未确认"}<br>涨放跌缩：${c.upDownVolumePass ? "确认" : "未确认"}<br>换手率：${c.turnover ?? "-"}%<br>${institutionalEvidence(c)}</span></td>
-                <td><b>${c.industryTier || "-"}级</b> ${c.industryLabel || c.theme || "-"}<br>${c.industryCatalyst || "等待订单、政策、产品或业绩催化"}<br><span class="muted">${c.financialEdge || "财务边际待确认"}</span></td>
+                <td><b>${c.industryTier || "-"}级</b> ${c.industryLabel || c.theme || "-"}<br>${c.industryCatalyst || "等待订单、政策、产品或业绩催化"}<br><span class="muted">新增预期：${c.catalystStatus || "待核验"}<br>${c.financialEdge || "财务边际待确认"}</span></td>
                 <td><b>${c.moatScore ?? "-"}/10</b><br>${c.moatScore >= 8 ? "壁垒较强" : c.moatScore >= 5 ? "具备一定壁垒" : "壁垒证据待补"}<br><span class="muted">当前市值 ${c.marketCapYi ?? "-"}亿，用于准入过滤但不计分</span></td>
                 <td>${stars(c.mainRiseProbability || 0)}<br><b>${c.type || "待分类"}</b><br><span class="muted">${c.buyPoint || "等待右侧确认"}</span></td>
-                <td>${(c.failureReasons || [c.risk || "产业、资金或业绩不及预期"]).map(x => `• ${x}`).join("<br>")}</td>
+                <td>${(c.elasticityVetoes || c.failureReasons || [c.risk || "产业、资金或业绩不及预期"]).map(x => `• ${x}`).join("<br>")}</td>
               </tr>`).join("")}
             </tbody></table></div>
           </div>
           <div class="section card"><h2>1个月滚动跟踪池（最多100只）</h2>
-            <p class="muted">只保留新版主升启动模型评分不低于65、且仍处在爬坡期或主升初期的股票。旧模型遗留、高位加速、评分降级和30天未再次入选的股票会自动移除。</p>
+            <p class="muted">只保留新版模型评分不低于65、且仍处在首次放量突破、突破后平台整理或主升前爬坡的股票。缺少新增预期、高位加速、评分降级和30天未再次入选的股票会自动移除。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>评分/阶段</th><th>主升概率/类型</th><th>首次跟踪</th><th>最近入选</th><th>入选价/现价</th><th>今日/累计</th><th>产业催化</th><th>风险/状态</th></tr></thead><tbody>
               ${tracked.map(t => `<tr>
                 <td><b>${t.name}</b><br><span class="muted">${t.code || ""}</span></td>
@@ -904,23 +904,23 @@
             </div>
           </div>
           <div class="section card dense">
-            <h2>五维评分框架</h2>
+            <h2>五倍股：七维研究与数学验证</h2><p class="muted">评分只回答产业与公司质量；五倍数学验证另行核验行业利润池、份额、产能、利润率和合理估值能否共同支撑五倍。两者必须同时通过。</p>
             <div class="table-scroll"><table class="compact-table"><thead><tr><th>维度</th><th>权重</th><th>机构式判断口径</th></tr></thead><tbody>
-              ${scoringDimensions.map(x => `<tr><td><b>${x.dimension}</b></td><td>${x.weight}分</td><td>${x.read}</td></tr>`).join("")}
+              <tr><td><b>产业利润池</b></td><td>20分</td><td>TAM→SAM、行业利润池、长期增速与竞争格局。</td></tr><tr><td><b>竞争壁垒</b></td><td>20分</td><td>技术、客户、认证、成本和生态。</td></tr><tr><td><b>份额提升</b></td><td>15分</td><td>客户导入、订单、产能与可获得份额。</td></tr><tr><td><b>利润复利</b></td><td>15分</td><td>正常化利润、利润CAGR与毛利率。</td></tr><tr><td><b>现金流与商业模式</b></td><td>10分</td><td>经营现金流、资本开支和ROIC。</td></tr><tr><td><b>治理与稀释</b></td><td>10分</td><td>治理、非经常收益与潜在摊薄。</td></tr><tr><td><b>五倍可行性</b></td><td>10分</td><td>目标市值→利润→收入→份额的数学闭环。</td></tr>
             </tbody></table></div>
           </div>
           <div class="section card dense" id="future-five-x">
             <h2>未来5倍候选池</h2>
-            <p class="muted">正式候选硬条件：市值50亿至500亿、产业A级以上、综合评分不低于70、三年中性空间不低于3倍、业绩或利润率改善。未满足估值证据的公司仍保留在下方成长研究排名。</p>
-            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>五维评分</th><th>市值空间</th><th>核心逻辑</th><th>未来催化</th><th>最大风险</th></tr></thead><tbody>
+            <p class="muted">正式候选：可买A股、市值低于1000亿、产业S/A级、五倍模型70分以上、五倍数学验证通过且无周期纯涨价、非经常收益、严重稀释或治理风险否决。未通过者仍在全市场研究中保留。</p>
+            <div class="table-scroll"><table class="compact-table"><thead><tr><th>股票</th><th>产业定位</th><th>七维评分</th><th>五倍数学验证</th><th>核心逻辑</th><th>未来催化</th><th>否决/最大风险</th></tr></thead><tbody>
               ${fiveXCandidates.map(c => `<tr>
                 <td><b>${c.name}</b><br><span class="muted">${c.code}</span></td>
                 <td>${c.industry || c.theme || "-"}<br><span class="muted">${c.chain || ""}</span></td>
-                <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">产业${c.industryTrendScore ?? "-"} 竞争${c.companyMoatScore ?? "-"} 财务${c.financialGrowthScore ?? "-"} 估值${c.valuationPotentialScore ?? "-"} 技术${c.technicalFundsScore ?? "-"}</span></td>
-                <td>当前约${c.marketCapYi ?? c.currentMcapYi ?? "-"}亿<br>目标约${c.targetMcapYi ?? "-"}亿<br><b>${c.upsideMultiple ?? "-"}倍空间</b></td>
+                <td><b>${c.fiveXPotentialIndex ?? "-"}/100</b><br><span class="muted">利润池${c.fiveXComponents?.industryProfitPool ?? "-"}/20 壁垒${c.fiveXComponents?.moat ?? "-"}/20<br>份额${c.fiveXComponents?.shareGain ?? "-"}/15 利润${c.fiveXComponents?.profitCagr ?? "-"}/15<br>现金流${c.fiveXComponents?.cashFlowModel ?? "-"}/10 治理${c.fiveXComponents?.governance ?? "-"}/10 可行性${c.fiveXComponents?.valuationFeasibility ?? "-"}/10</span></td>
+                <td>当前约${c.marketCapYi ?? c.currentMcapYi ?? "-"}亿 → 五倍目标${c.fiveXMath?.targetMcapYi ?? "-"}亿<br>所需净利${c.fiveXMath?.targetProfitYi ?? "-"}亿；所需收入${c.fiveXMath?.targetRevenueYi ?? "-"}亿<br>所需SAM份额${c.fiveXMath?.requiredSharePct != null ? `${Number(c.fiveXMath.requiredSharePct).toFixed(1)}%` : "待验证"}</td>
                 <td>${c.investmentLogicCard?.whyFutureGrowth || c.coreLogic || "-"}<br><span class="muted"><b>机构/筹码：</b><br>${institutionalEvidence(c)}<br><b>历史共性匹配：</b>${(c.historicalPatternMatched || []).join("；") || "待补历史行情"}<br><b>仍缺：</b>${(c.historicalPatternMissing || []).join("；") || "无明确缺项"}</span></td>
                 <td>${Array.isArray(c.investmentLogicCard?.futureCatalysts) ? c.investmentLogicCard.futureCatalysts.join("；") : c.futureCatalysts || "-"}</td>
-                <td>${c.investmentLogicCard?.maxRisk || c.risk || "-"}</td>
+                <td>${(c.fiveXVetoes || []).length ? `<b>未通过：</b>${c.fiveXVetoes.join("；")}` : "已通过数学与否决校验"}<br><span class="muted">${c.investmentLogicCard?.maxRisk || c.risk || "-"}</span></td>
               </tr>`).join("") || `<tr><td colspan="7">本期没有同时满足“70分、三倍空间、财务改善和估值证据完整”的正式候选；这不等于删除成长样本，请看下方全市场成长研究排名。</td></tr>`}
             </tbody></table></div>
           </div>
@@ -1011,22 +1011,22 @@
         const valueModel = state.valueQualityModel || {};
         html = `
           <div class="card notice dense">
-            <h2>AI产业时代的成长价值发现系统</h2>
-            <p><b>定位：</b>寻找市场尚未正确估值的未来资产。低PE/PB只占25分；成长潜力30分、产业价值25分、竞争壁垒15分，技术位置仅占5分并且只用于判断买点。</p>
+            <h2>当前低估值模型</h2>
+            <p><b>定位：</b>只判断“当前已兑现业绩、现金流、资产和周期位置是否被低估”。未来产业空间、目标市值和五倍潜力完全留在五倍模型，不混入本页。</p>
             <p><b>扫描范围：</b>${state.meta?.scanScope || "等待全市场扫描结果"}。</p>
             <p><b>财务覆盖：</b>${state.meta?.valueQualityDataCoverage || valueModel.financialSource || "财务数据等待更新"}。缺失指标显示“待验证”，不会用默认高分补齐。</p>
             <p><b>核心判断：</b>当前低估只依据已兑现的利润、现金流、资产质量及行业/历史估值折价；未来估值单独依据产业空间和盈利情景。两套结论分开展示、互不替代，技术形态只决定何时买。</p>
           </div>
           <div class="section grid3">
-            ${card("估值安全 25分", "<p>PE、PB、PS、EV/EBITDA及行业相对折价。便宜是安全垫，不是核心增长来源。</p>")}
-            ${card("成长潜力 30分", "<p>近3年营收/利润CAGR、利润弹性、ROE趋势和毛利率趋势。收入温和增长但利润快速增长会加分。</p>")}
-            ${card("产业价值 25分", "<p>S级优先AI、半导体、机器人、高端制造和国产替代；传统行业只有在成长和估值都成立时入选。</p>")}
-            ${card("竞争壁垒 15分", "<p>全球领先、国内第一、细分前三、客户/技术壁垒。没有行业排名依据时只给保守分并标注待核验。</p>")}
-            ${card("技术位置 5分", "<p>成交承接和位置只用于分批买点，不用K线替代公司价值。</p>")}
+            ${card("正常化利润 25分", "<p>用周期中枢利润、扣除非经常收益后的盈利能力计算估值，避免利润高点低PE陷阱。</p>")}
+            ${card("现金流与资产 30分", "<p>经营现金流15分、资产/重置成本15分。利润无法转化为现金，低估就可能是错觉。</p>")}
+            ${card("周期位置 15分", "<p>区分周期底部、正常和顶部；周期顶部的低PE直接降级。</p>")}
+            ${card("负债、资本开支与回报 20分", "<p>负债/资本开支10分，分红和回购等股东回报10分。</p>")}
+            ${card("重估催化 10分", "<p>只认可已披露订单、价格、供需、资产处置或盈利修复线索，不用长期故事凑分。</p>")}
             ${card("当前估值状态", "<p><span class='status-chip deep'>当前深度低估</span> <span class='status-chip reasonable'>当前估值偏低</span> <span class='status-chip reasonable'>当前估值合理</span> <span class='status-chip trap'>周期盈利需中枢化</span> <span class='status-chip trap'>低估陷阱风险</span></p>")}
           </div>
           <div class="section card">
-            <h2>成长价值候选</h2>
+            <h2>当前低估值候选</h2>
             <div class="table-scroll"><table class="compact-table" style="min-width:1820px"><thead><tr><th>股票</th><th>综合评分</th><th>当前业绩估值</th><th>行业折价</th><th>成长</th><th>产业</th><th>护城河</th><th>未来估值（独立）</th><th>周期位置</th><th>催化剂</th><th>最大风险</th></tr></thead><tbody>
               ${ideas.length ? ideas.map(x => {
                 const composite = x.compositeScore != null ? Number(x.compositeScore) : NaN;
@@ -1043,7 +1043,7 @@
                   <td><b>${growthScore}/30</b><br>${stars(scoreToFive(growthScore, 30))}<br>营收CAGR:${fmtPct(x.growth?.revenueCagr3Y)}<br>利润CAGR:${fmtPct(x.growth?.profitCagr3Y)}<br>ROE趋势:${fmtPct(x.growth?.roeTrend)}</td>
                   <td><b>${industryScore}/25</b><br>${stars(scoreToFive(industryScore, 25))}<br>${x.theme || x.industryLabel || "待分类"}<br><span class="muted">${x.industryChain || "细分位置待核验"}</span></td>
                   <td><b>${moatScore}/15</b><br>${stars(scoreToFive(moatScore, 15))}<br>${x.moat?.read || "行业排名待核验"}</td>
-                  <td><b>${x.futureValuationStatus || "未来估值待补"}</b><br>当前：${x.currentMcapYi ?? x.marketCapYi ?? "-"}亿<br>概率加权目标：${x.targetMcapYi ?? "待验证"}亿<br><b>${x.upsideMultiple ? `${x.upsideMultiple}倍` : "不强算"}</b> ${stars(x.potentialStars || 0)}<br>利润CAGR假设：${x.forwardGrowthAssumptions?.rates?.neutral?.profitCagrPct ?? "待验证"}%<br><span class="muted">不影响当前低估评分；${x.targetMethod || "证据待补"}</span></td>
+                  <td><b>正常化净利 ${x.cycleModel?.normalizedProfitYi ?? "待验证"}亿</b><br>正常化PE:${x.cycleModel?.normalizedPe ?? "待验证"}<br><span class="muted">未来目标市值不属于本模型</span></td>
                   <td>${x.cyclePosition || "待验证"}<br><span class="${pctClass(x.dayPct)}">今日 ${fmtPct(x.dayPct)}</span><br><span class="muted">成交 ${x.amount || "-"}</span></td>
                   <td>${x.catalyst || "下一份财报与订单验证"}<br><span class="muted">${x.keyCheck || "-"}</span></td>
                   <td><b>陷阱指数 ${x.valueTrapIndex ?? "-"}/100</b><br>${(x.valueTrapReasons || []).join("；") || x.maximumRisk || x.risk || "-"}<br><span class="muted">${x.action || "-"}</span></td>
