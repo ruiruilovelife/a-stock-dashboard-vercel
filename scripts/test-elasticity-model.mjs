@@ -35,10 +35,10 @@ const sIndustry = { tier: "S", label: "半导体设备", chain: "国产替代" }
 const weakIndustry = { tier: "C", label: "传统行业", chain: "普通竞争" };
 const growth = { latestProfitGrowth: 65, latestRevenueGrowth: 28, roeTrend: 2, marginTrend: 1 };
 
-assert.equal(elasticityStartupPhase(earlyWeekly), "主升初期");
-assert.equal(elasticityStartupPhase(acceleratedWeekly), "加速期");
-assert.equal(elasticityStartupPhase(highRiskWeekly), "高位风险");
-assert.ok(elasticityTrendScore(earlyWeekly, "主升初期") > elasticityTrendScore(acceleratedWeekly, "加速期"));
+assert.equal(elasticityStartupPhase(earlyWeekly), "突破后平台整理");
+assert.equal(elasticityStartupPhase(acceleratedWeekly), "主升加速");
+assert.equal(elasticityStartupPhase(highRiskWeekly), "高位震荡");
+assert.ok(elasticityTrendScore(earlyWeekly, "突破后平台整理") > elasticityTrendScore(acceleratedWeekly, "主升加速"));
 assert.equal(elasticityFundsScore(marketRow, earlyWeekly), 30);
 assert.ok(elasticityIndustryScore(sIndustry, growth) >= 28);
 assert.ok(elasticityIndustryScore(sIndustry, growth) > elasticityIndustryScore(weakIndustry, growth));
@@ -49,7 +49,7 @@ assert.equal(elasticityProbabilityStars(90, 24, 24, 26), 5);
 
 const risks = elasticityFailureReasons({
   weekly: { ...earlyWeekly, weeklyTrendPass: false, volumeStairPass: false },
-  phase: "底部",
+  phase: "底部构筑",
   industry: weakIndustry,
   growth: { latestProfitGrowth: -10 },
   fundsScore: 8,
@@ -64,8 +64,8 @@ assert.ok(risks.includes("竞争壁垒证据不足"));
 console.log(JSON.stringify({
   earlyPhase: elasticityStartupPhase(earlyWeekly),
   acceleratedPhase: elasticityStartupPhase(acceleratedWeekly),
-  earlyTrendScore: elasticityTrendScore(earlyWeekly, "主升初期"),
-  acceleratedTrendScore: elasticityTrendScore(acceleratedWeekly, "加速期"),
+  earlyTrendScore: elasticityTrendScore(earlyWeekly, "突破后平台整理"),
+  acceleratedTrendScore: elasticityTrendScore(acceleratedWeekly, "主升加速"),
   fundsScore: elasticityFundsScore(marketRow, earlyWeekly),
   industryScore: elasticityIndustryScore(sIndustry, growth),
   risks

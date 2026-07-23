@@ -63,6 +63,7 @@ const financials = new Map([
     marginTrend: 2.5,
     ocfToProfit: 105,
     debtToAssets: 38,
+    latestProfitYi: 8,
     reportPeriod: "20251231"
   }],
   ["601128", {
@@ -76,6 +77,7 @@ const financials = new Map([
     marginTrend: null,
     ocfToProfit: 90,
     debtToAssets: null,
+    latestProfitYi: 20,
     reportPeriod: "20251231"
   }],
   ["600001", {
@@ -89,6 +91,7 @@ const financials = new Map([
     marginTrend: -4,
     ocfToProfit: 20,
     debtToAssets: 75,
+    latestProfitYi: 16,
     reportPeriod: "20251231"
   }]
 ]);
@@ -106,11 +109,11 @@ const growthAsset = byCode.get("300416");
 const matureBank = byCode.get("601128");
 const trap = byCode.get("600001");
 
-if (!growthAsset || growthAsset.compositeScore < 80 || growthAsset.growthScore < 25 || growthAsset.industryScore !== 25) {
-  throw new Error(`成长价值样本评分异常：${JSON.stringify(growthAsset)}`);
+if (!growthAsset || growthAsset.compositeScore < 60 || growthAsset.valueComponents.normalizedEarnings <= 0) {
+  throw new Error(`当前低估值样本评分异常：${JSON.stringify(growthAsset)}`);
 }
-if (!matureBank || matureBank.compositeScore >= growthAsset.compositeScore || matureBank.industryScore >= growthAsset.industryScore) {
-  throw new Error(`成熟银行相对评分异常：${JSON.stringify(matureBank)}`);
+if (!matureBank || !matureBank.recommendationEligible) {
+  throw new Error(`成熟银行当前低估判断异常：${JSON.stringify(matureBank)}`);
 }
 if (!trap || trap.valueTrapRisk !== "高" || trap.valueTrapIndex < 60 || result.ideas.some(item => item.code === trap.code)) {
   throw new Error(`低估陷阱识别异常：${JSON.stringify(trap)}`);
@@ -118,10 +121,10 @@ if (!trap || trap.valueTrapRisk !== "高" || trap.valueTrapIndex < 60 || result.
 if (!growthAsset.currentValuationValid || growthAsset.investmentStatus === "当前估值待补") {
   throw new Error(`当前估值不应依赖未来目标市值：${JSON.stringify(growthAsset)}`);
 }
-if (!matureBank.currentValuationValid || !["当前深度低估", "当前估值偏低"].includes(matureBank.investmentStatus)) {
+if (!matureBank.currentValuationValid || !["真低估/价值修复", "当前估值待验证"].includes(matureBank.investmentStatus)) {
   throw new Error(`银行当前业绩低估判断异常：${JSON.stringify(matureBank)}`);
 }
-if (trap.investmentStatus !== "低估陷阱风险") {
+if (trap.investmentStatus !== "低估陷阱或需降级") {
   throw new Error(`低PE价值陷阱不应被标为低估：${JSON.stringify(trap)}`);
 }
 

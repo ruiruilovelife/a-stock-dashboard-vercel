@@ -86,11 +86,17 @@ function buildIndustryMap(companies = [], events = [], fundingStructure = {}, ge
         definition: `${category.definition}中的${track}环节。`,
         stage: trackStage(category, companiesForTrack),
         marketSpace: category.outlook,
+        profitPool: {
+          status: "待接入行业收入、利润池和产能利用率序列",
+          rule: "未取得可追溯行业利润池前，产业地图只说明方向，不可用于推导公司目标市值。"
+        },
         prosperity: flow?.avgPct > 1 ? "景气与价格共振" : flow?.avgPct < -1 ? "短期承压" : "景气待订单/盈利确认",
         policyDriver: category.policy,
         technologyDriver: category.technology,
         commercialization: companiesForTrack.some(item => item.relation === "核心主营") ? "已有A股主营样本" : "待补充主营样本",
         chainStructure: { upstream: "原材料/核心部件", midstream: track, downstream: "终端客户/应用场景" },
+        pricingMechanism: "由行业供需、产品价格、公司份额、利润率和资本开支共同决定；不同环节不得套用同一估值倍数。",
+        capacityCycle: "待接入产能、库存、开工率和价格数据后判定，当前不以主题热度替代周期位置。",
         keyLinks: track,
         leaders: companiesForTrack.filter(item => item.relation === "核心主营").slice(0, 5),
         highElasticity: companiesForTrack.filter(item => item.purity !== "低").slice(0, 5),
