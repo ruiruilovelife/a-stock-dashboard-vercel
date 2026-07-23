@@ -49,7 +49,20 @@ const research = buildCompanyResearchSnapshot({
   moatLevel: 4,
   policyStrengthScore: 4,
   coreRevenueSource: "AI服务器/国产算力",
-  coreProfitSource: "AI服务器/国产算力"
+  coreProfitSource: "AI服务器/国产算力",
+  marketCapacity: {
+    asOf: "2026-07-10",
+    sources: ["测试用可追溯行业容量证据"],
+    tamYi: 8000,
+    samYi: 2400,
+    horizonYears: 3,
+    capacityRevenueYi: 900,
+    scenarios: {
+      conservative: { companySharePct: 12, netMarginPct: 4, peerPe: 24 },
+      neutral: { companySharePct: 18, netMarginPct: 5, peerPe: 28 },
+      optimistic: { companySharePct: 24, netMarginPct: 6, peerPe: 32 }
+    }
+  }
 }, {
   now: new Date("2026-07-12T02:00:00+08:00"),
   marketDate: "20260710",

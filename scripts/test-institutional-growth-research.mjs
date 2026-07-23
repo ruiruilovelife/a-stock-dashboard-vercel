@@ -7,7 +7,7 @@ const rows = [
   { code: "300001", name: "成长待估样本", buyable: true, close: 20, marketCapYi: 100, industry: "半导体材料", dayPct: 1, turnover: 2, amountRaw: 500000000 },
   { code: "300002", name: "成长可估样本", buyable: true, close: 25, marketCapYi: 120, industry: "半导体设备", dayPct: 2, turnover: 3, amountRaw: 800000000 },
   { code: "300003", name: "普通成长样本", buyable: true, close: 12, marketCapYi: 80, industry: "工业设备", dayPct: -1, turnover: 1, amountRaw: 200000000 },
-  { code: "688001", name: "科创不可买样本", buyable: false, close: 30, marketCapYi: 90, industry: "半导体", dayPct: 1, turnover: 2, amountRaw: 300000000 }
+  { code: "688001", name: "科创研究样本", buyable: false, close: 30, marketCapYi: 90, industry: "半导体", dayPct: 1, turnover: 2, amountRaw: 300000000 }
 ];
 
 const research = new Map([
@@ -43,9 +43,9 @@ const daily = [{
   phase: "主升初期"
 }];
 const result = await buildInstitutionalGrowthResearch(rows, daily, research, new Map());
-assert.equal(result.scanStats.scanned, 3, "必须扫描全部可买样本");
-assert.equal(result.scanStats.growthResearchRetained, 3, "估值缺失不得删除成长样本");
-assert.equal(result.scanStats.valuationPending, 2);
+assert.equal(result.scanStats.scanned, 4, "科创、北证与主板创业板都必须进入全市场研究");
+assert.equal(result.scanStats.growthResearchRetained, 4, "估值缺失不得删除成长样本");
+assert.equal(result.scanStats.valuationPending, 3);
 assert.equal(result.scanStats.valuationReady, 1);
 assert.ok(result.all.some(item => item.code === "300001" && item.valuationPending), "高成长但估值待补样本必须保留");
 assert.ok(result.futureFiveXCandidates.some(item => item.code === "300002"), "满足70分、三倍空间和财务改善的样本应进入正式候选");

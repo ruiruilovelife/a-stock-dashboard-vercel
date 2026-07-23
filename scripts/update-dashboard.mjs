@@ -2905,7 +2905,7 @@ function elasticityFailureReasons({ weekly, phase, industry, growth, fundsScore,
 
 function elasticityPrefilter(snapshot, financialByCode) {
   return (snapshot || [])
-    .filter(row => row.buyable && !/^ST|^\*ST/.test(row.name || ""))
+    .filter(row => isBuyableAShareCode(row.code) && !/^ST|^\*ST/.test(row.name || ""))
     .filter(row => Number(row.close) > 3)
     .filter(row => Number(row.marketCapYi) >= 30 && Number(row.marketCapYi) <= 800)
     .filter(row => Number(row.dayPct) > -5 && Number(row.dayPct) < 7.5)
@@ -3347,7 +3347,14 @@ function currentMarketCapForGrowth(item, marketRow, dailyCandidate) {
 }
 
 function growthTierForResearch(research, override) {
-  return research?.industry?.strategyTier || override?.tier || "C";
+  if (research?.industry?.strategyTier) return research.industry.strategyTier;
+  if (override?.tier) return override.tier;
+  // Partial research records may omit strategyTier. Preserve the established
+  // industry family instead of silently downgrading it to C.
+  const family = research?.industry?.familyId;
+  if (["ai_infrastructure", "semiconductor_advanced", "robotics_automation", "high_end_manufacturing"].includes(family)) return "S";
+  if (["new_energy_core", "innovation_pharma", "fluorochemicals", "software_platform"].includes(family)) return "A";
+  return "C";
 }
 
 function normalizedGrowthInputs(research, override) {
@@ -3389,7 +3396,7 @@ async function buildInstitutionalGrowthResearch(marketWideSnapshot = [], dailyCa
   const dailyByCode = new Map((dailyCandidates || []).map(item => [item.code, item]));
   const overrideByCode = new Map(FUTURE_GROWTH_UNIVERSE.map(item => [item.code, item]));
   const universe = (marketWideSnapshot || [])
-    .filter(row => row.buyable && isBuyableAShareCode(row.code))
+    .filter(row => isBuyableAShareCode(row.code))
     .filter(row => !/^ST|^\*ST/.test(row.name || ""));
   const weeklyPriority = [...universe]
     .sort((a, b) => {
